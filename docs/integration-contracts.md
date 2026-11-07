@@ -198,7 +198,31 @@ service with no owned tables. If stable clusters or multi-replica learning becom
 required, a separate reviewed decision must assign state ownership, isolation key,
 storage, retention, concurrency and migration behavior before implementation.
 
-## 6. Decisions required for acceptance
+## 6. Alignment with the IaC foundation
+
+This proposal was checked against `pipesor-iac` commit
+`4b42c0c8e66578dfb890ae1cca8c9c31c774026e`. That revision provides the following
+boundaries, but does not make this application contract deployable by itself:
+
+- The optional Service Bus foundation is a public, Entra-only Standard namespace
+  with TLS 1.2 and local authentication disabled. It creates no topic,
+  subscription, duplicate-detection window, maximum-delivery policy or runtime
+  role assignment, so those remain explicit contract and deployment decisions.
+- The Container Apps foundation is an environment boundary, not an NLP
+  application deployment. A system-assigned identity per future app is approved,
+  while the app, its audience and its scoped Service Bus/Correlation grants remain
+  pending.
+- The optional Microsoft Foundry foundation exposes an Entra-only account/project
+  interface and service-reported endpoint. It deliberately creates no model
+  deployment or runtime grant; this NLP contract therefore claims no Azure OpenAI
+  capability.
+- IaC records these as locally prepared foundations. This review performed no
+  Azure write, deployment, state mutation or access grant.
+
+If the IaC revision or module interfaces change, this alignment must be reviewed
+again before implementation or deployment.
+
+## 7. Decisions required for acceptance
 
 1. Ingestion, Pipeline and Log/Event owners confirm the shared envelope and the
    owner/format of `execution_id`, repository/workflow identity and stage values.
