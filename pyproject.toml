@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Sanitized log preprocessing and Drain3 structuring for Pipesor."
 requires-python = ">=3.14,<3.15"
 dependencies = [
+  "azure-identity==1.27.0",
+  "azure-servicebus==7.15.0",
   "drain3==0.9.11",
 ]
 

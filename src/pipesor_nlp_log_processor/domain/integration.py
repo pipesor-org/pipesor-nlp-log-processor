@@ -106,4 +106,6 @@ class CorrelationEvidence:
     job: str | None
     sanitized_content: str
     template: str
+    traceparent: str | None = None
+    tracestate: str | None = None
 

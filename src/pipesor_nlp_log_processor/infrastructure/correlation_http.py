@@ -91,16 +91,21 @@ class CorrelationHttpDelivery:
         last_error: TransientDeliveryError | None = None
         for attempt in range(1, self._retry_policy.max_attempts + 1):
             try:
+                headers = {
+                    "Authorization": f"Bearer {self._token_provider.get_token()}",
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Accept": "application/json",
+                    "X-Correlation-ID": evidence.correlation_id,
+                    "Idempotency-Key": evidence.message_id,
+                }
+                if evidence.traceparent:
+                    headers["traceparent"] = evidence.traceparent
+                if evidence.traceparent and evidence.tracestate:
+                    headers["tracestate"] = evidence.tracestate
                 response = self._transport.post(
                     self._url,
                     body,
-                    {
-                        "Authorization": f"Bearer {self._token_provider.get_token()}",
-                        "Content-Type": "application/json; charset=utf-8",
-                        "Accept": "application/json",
-                        "X-Correlation-ID": evidence.correlation_id,
-                        "Idempotency-Key": evidence.message_id,
-                    },
+                    headers,
                     self._timeout_seconds,
                 )
                 return self._interpret(response, evidence.message_id)

@@ -8,6 +8,11 @@ class InvalidSettings(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class RuntimeSettings:
+    service_bus_namespace: str
+    service_bus_topic: str
+    service_bus_subscription: str
+    service_bus_receive_wait_seconds: float
+    service_bus_max_lock_renewal_seconds: float
     correlation_endpoint: str
     correlation_timeout_seconds: float
     correlation_max_attempts: int
@@ -15,11 +20,26 @@ class RuntimeSettings:
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str]) -> "RuntimeSettings":
+        namespace = environment.get("PIPESOR_SERVICE_BUS_NAMESPACE", "").strip()
+        topic = environment.get("PIPESOR_SERVICE_BUS_TOPIC", "").strip()
+        subscription = environment.get("PIPESOR_SERVICE_BUS_SUBSCRIPTION", "").strip()
+        if not namespace.endswith(".servicebus.windows.net") or "://" in namespace:
+            raise InvalidSettings(
+                "PIPESOR_SERVICE_BUS_NAMESPACE must be a fully qualified Azure namespace"
+            )
+        if not topic:
+            raise InvalidSettings("PIPESOR_SERVICE_BUS_TOPIC is required")
+        if not subscription:
+            raise InvalidSettings("PIPESOR_SERVICE_BUS_SUBSCRIPTION is required")
         endpoint = environment.get("PIPESOR_CORRELATION_ENDPOINT", "").strip()
         if not endpoint.startswith("https://"):
             raise InvalidSettings("PIPESOR_CORRELATION_ENDPOINT must use HTTPS")
         try:
             timeout = float(environment.get("PIPESOR_CORRELATION_TIMEOUT_SECONDS", "5"))
+            receive_wait = float(environment["PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS"])
+            lock_renewal = float(
+                environment["PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS"]
+            )
             attempts = int(environment["PIPESOR_CORRELATION_MAX_ATTEMPTS"])
             backoff = float(environment["PIPESOR_CORRELATION_BACKOFF_SECONDS"])
         except KeyError as error:
@@ -30,6 +50,14 @@ class RuntimeSettings:
             raise InvalidSettings(
                 "PIPESOR_CORRELATION_TIMEOUT_SECONDS must be between 0 and 60"
             )
+        if not 0 < receive_wait <= 300:
+            raise InvalidSettings(
+                "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS must be between 0 and 300"
+            )
+        if not 30 <= lock_renewal <= 3600:
+            raise InvalidSettings(
+                "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS must be between 30 and 3600"
+            )
         if not 1 <= attempts <= 10:
             raise InvalidSettings(
                 "PIPESOR_CORRELATION_MAX_ATTEMPTS must be between 1 and 10"
@@ -38,5 +66,15 @@ class RuntimeSettings:
             raise InvalidSettings(
                 "PIPESOR_CORRELATION_BACKOFF_SECONDS must be between 0 and 30"
             )
-        return cls(endpoint.rstrip("/"), timeout, attempts, backoff)
+        return cls(
+            namespace,
+            topic,
+            subscription,
+            receive_wait,
+            lock_renewal,
+            endpoint.rstrip("/"),
+            timeout,
+            attempts,
+            backoff,
+        )
 

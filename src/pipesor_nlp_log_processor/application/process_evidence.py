@@ -10,6 +10,8 @@ class ProcessEvidence:
         self._delivery = delivery
 
     def execute(self, received: ReceivedMessage) -> DeliveryStatus:
+        if received.contract_error is not None:
+            raise InvalidIntegrationMessage(received.contract_error)
         message = ProtectedEvidenceMessage.from_json(received.body)
         mismatches = tuple(
             path
@@ -42,6 +44,8 @@ class ProcessEvidence:
                 job=message.job,
                 sanitized_content=processed.sanitized_content,
                 template=processed.template,
+                traceparent=received.traceparent,
+                tracestate=received.tracestate,
             )
         )
 
