@@ -96,6 +96,11 @@ def test_rejects_broker_property_mismatch() -> None:
 def test_loads_typed_runtime_settings() -> None:
     settings = RuntimeSettings.from_environment(
         {
+            "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
+            "PIPESOR_SERVICE_BUS_TOPIC": "protected-evidence",
+            "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
+            "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "10",
+            "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
             "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal/",
             "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "2.5",
             "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
@@ -106,12 +111,20 @@ def test_loads_typed_runtime_settings() -> None:
     assert settings.correlation_timeout_seconds == 2.5
     assert settings.correlation_max_attempts == 3
     assert settings.correlation_backoff_seconds == 0.25
+    assert settings.service_bus_namespace == "pipesor-dev.servicebus.windows.net"
+    assert settings.service_bus_receive_wait_seconds == 10
+    assert settings.service_bus_max_lock_renewal_seconds == 300
 
 
 def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
     with pytest.raises(InvalidSettings, match="HTTPS"):
         RuntimeSettings.from_environment(
             {
+                "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
+                "PIPESOR_SERVICE_BUS_TOPIC": "protected-evidence",
+                "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
+                "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "10",
+                "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
                 "PIPESOR_CORRELATION_ENDPOINT": "http://correlation.internal",
                 "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
                 "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
@@ -120,6 +133,11 @@ def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
     with pytest.raises(InvalidSettings, match="between 0 and 60"):
         RuntimeSettings.from_environment(
             {
+                "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
+                "PIPESOR_SERVICE_BUS_TOPIC": "protected-evidence",
+                "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
+                "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "10",
+                "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
                 "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal",
                 "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "0",
                 "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",

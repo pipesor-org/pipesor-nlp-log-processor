@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
@@ -10,6 +10,10 @@ class ReceivedMessage:
     body: bytes
     message_id: str
     correlation_id: str
+    traceparent: str | None = None
+    tracestate: str | None = None
+    contract_error: str | None = None
+    settlement_token: object | None = field(default=None, compare=False, repr=False)
 
 
 class DeliveryStatus(StrEnum):
