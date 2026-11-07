@@ -2,9 +2,9 @@
 
 NLP Log Processor preprocesses protected logs, structures them with Drain3, prepares semantic signals and delivers processed evidence to the correlation service. Its canonical architecture ID is `nlp_log_processor`; the planned runtime is Python / FastAPI on Azure Container Apps.
 
-The first local processing increment is implemented as a Python package. It validates required execution context, redacts common credential shapes before parsing, structures sanitized logs with an in-memory Drain3 adapter and preserves provenance and execution/correlation identifiers in the result. It does not consume Service Bus, call Azure OpenAI, deliver to the correlation service or expose a business HTTP API yet.
+The local processing foundation is implemented as a Python package. It validates the candidate versioned evidence envelope and broker identifiers, redacts common credential shapes before parsing, structures sanitized logs with an in-memory Drain3 adapter and maps the result to the candidate Correlation contract. Typed receiver, settlement and delivery ports plus in-memory test adapters keep Azure Service Bus and HTTP SDKs outside the domain. It does not connect to Service Bus, call Azure OpenAI, perform a real correlation request or expose a business HTTP API yet.
 
-The Azure OpenAI embedding model, dimension, endpoint/SDK and grants remain pending decisions. Parser-state persistence and broker settlement/re-delivery semantics are also intentionally not selected by this increment.
+The Azure OpenAI embedding model, dimension, endpoint/SDK and grants remain pending decisions. Parser-state persistence and concrete broker settlement/re-delivery configuration are also intentionally not selected by this increment.
 
 ## Documentation
 
