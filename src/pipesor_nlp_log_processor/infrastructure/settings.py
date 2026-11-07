@@ -14,9 +14,11 @@ class RuntimeSettings:
     service_bus_receive_wait_seconds: float
     service_bus_max_lock_renewal_seconds: float
     correlation_endpoint: str
+    correlation_scope: str
     correlation_timeout_seconds: float
     correlation_max_attempts: int
     correlation_backoff_seconds: float
+    log_level: str
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str]) -> "RuntimeSettings":
@@ -34,6 +36,14 @@ class RuntimeSettings:
         endpoint = environment.get("PIPESOR_CORRELATION_ENDPOINT", "").strip()
         if not endpoint.startswith("https://"):
             raise InvalidSettings("PIPESOR_CORRELATION_ENDPOINT must use HTTPS")
+        scope = environment.get("PIPESOR_CORRELATION_SCOPE", "").strip()
+        if not scope.endswith("/.default") or any(character.isspace() for character in scope):
+            raise InvalidSettings(
+                "PIPESOR_CORRELATION_SCOPE must be a single /.default scope"
+            )
+        log_level = environment.get("PIPESOR_LOG_LEVEL", "INFO").strip().upper()
+        if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            raise InvalidSettings("PIPESOR_LOG_LEVEL is invalid")
         try:
             timeout = float(environment.get("PIPESOR_CORRELATION_TIMEOUT_SECONDS", "5"))
             receive_wait = float(environment["PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS"])
@@ -73,8 +83,10 @@ class RuntimeSettings:
             receive_wait,
             lock_renewal,
             endpoint.rstrip("/"),
+            scope,
             timeout,
             attempts,
             backoff,
+            log_level,
         )
 
