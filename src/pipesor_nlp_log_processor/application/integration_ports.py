@@ -17,6 +17,20 @@ class DeliveryStatus(StrEnum):
     DUPLICATE = "duplicate"
 
 
+class DeliveryError(RuntimeError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
+class TransientDeliveryError(DeliveryError):
+    """The handoff may succeed when the broker redelivers the message."""
+
+
+class PermanentDeliveryError(DeliveryError):
+    """The downstream contract rejected this message permanently."""
+
+
 class EvidenceDelivery(Protocol):
     def deliver(self, evidence: CorrelationEvidence) -> DeliveryStatus: ...
 
@@ -32,5 +46,11 @@ class MessageSettlement(Protocol):
 
     def dead_letter(
         self, message: ReceivedMessage, reason: str, field_paths: tuple[str, ...]
+    ) -> None: ...
+
+
+class ProcessingObserver(Protocol):
+    def record(
+        self, outcome: str, message_id: str, correlation_id: str, reason: str | None
     ) -> None: ...
 
