@@ -32,6 +32,9 @@ Run the verified checks:
 git diff --check
 ```
 
+When Docker Desktop is running, also build the image and verify the safe
+configuration failure using the commands in the [Container](#container) section.
+
 After supplying the reviewed runtime variables, start the worker with:
 
 ```powershell
@@ -50,6 +53,31 @@ defaults to `INFO`. Values remain reviewed deployment inputs; this repository
 does not provide production identifiers or credentials.
 
 The worker validates all settings before creating clients, consumes Service Bus, delivers sanitized evidence to Correlation and handles `SIGINT`/`SIGTERM` between receives. It does not expose a public or inbound business HTTP endpoint.
+
+## Container
+
+The multi-stage image uses the digest-pinned official Python 3.14.8 slim base,
+installs only the application wheel in the runtime stage and runs as UID/GID
+`10001`. Build it with its source revision recorded in the OCI metadata:
+
+```powershell
+$revision = git rev-parse HEAD
+docker build --build-arg "VCS_REF=$revision" --tag pipesor-nlp-log-processor:local .
+```
+
+Running the image without configuration is a safe startup validation: it exits
+with code `2` before creating Azure clients. For an authorized local integration,
+copy `container.env.example` outside version control, supply the reviewed nonsecret
+identifiers and run:
+
+```powershell
+docker run --rm --env-file .env.local pipesor-nlp-log-processor:local
+```
+
+Do not place tokens or connection strings in that file. Authentication uses the
+Azure credential chain; the Container App target uses its managed identity. No
+container health check or port is declared because the worker has no inbound API
+and its liveness/readiness probe contract remains pending.
 
 CI runs the same Python checks and validates PR titles, required PR-description sections and commit headers against the organization Conventional Commit policy. Human review is still required for English imperative summaries, reported verification and behavioral correctness.
 

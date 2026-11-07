@@ -7,7 +7,7 @@ Service Bus input, Correlation handoff, failure, authentication and Drain3-state
 semantics for review. They are not accepted contracts and do not close the pending
 decisions listed here.
 
-**Documented fact** means recorded in those sources/policies, not proven implementation or independent approval evidence. **Proposal** requires acceptance; **Unknown** remains pending. No application images, endpoints, credentials or migrations are implemented in this service increment. IaC contains infrastructure preparation; provisioning is not evidenced here.
+**Documented fact** means recorded in those sources/policies, not proven implementation or independent approval evidence. **Proposal** requires acceptance; **Unknown** remains pending. A local container build definition now exists, but no published image, deployed endpoint, credential, migration or Azure provisioning is evidenced here. IaC contains infrastructure preparation; provisioning is not evidenced here.
 
 ## Identity and runtime
 
@@ -37,7 +37,7 @@ PostgreSQL's `vector` allowlist setting does not execute SQL extension creation,
 |---|---|---|
 | Delivery unit | Container image for this service. | Documented fact: `deployment.containerization`, ADR-001/018. |
 | Immutable identity | Associate the image with its source commit and digest; promote the same digest through the staged delivery flow. | Documented organization target: CONTRIBUTING artifact promotion. No digest, version, image or automation exists. |
-| Release/version | Policy targets Conventional-Commit-derived SemVer and protected `vX.Y.Z` tags after staging, without rebuilding. | Documented organization target, not configured release tooling. GHCR is selected in the integrated IaC baseline; image path/tag convention, build/publish responsibility and private-pull credentials remain pending under PD-035. |
+| Release/version | Policy targets Conventional-Commit-derived SemVer and protected `vX.Y.Z` tags after staging, without rebuilding. | The local image records a supplied source revision and package version in OCI labels. Release automation, GHCR image path/tag convention, build/publish responsibility, private-pull credentials and a published digest remain pending under PD-035. |
 | Ownership handoff | Proposed: this service's maintainers supply the tested image/digest and runtime/configuration requirements; IaC maintainers consume the approved delivery inputs for the agreed environment. | Proposal under PD-035; no named build/publish owner or accepted handoff contract is documented. |
 | Promotion responsibility | Independent QA approval before staging and independent product-owner approval before production are policy targets. | Documented organization target. Concrete automation, environment mapping and operational owners remain unknown under PD-035; do not infer them from the sibling IaC implementation. |
 
