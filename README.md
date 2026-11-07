@@ -2,7 +2,7 @@
 
 NLP Log Processor preprocesses protected logs, structures them with Drain3, prepares semantic signals and delivers processed evidence to the correlation service. Its canonical architecture ID is `nlp_log_processor`; the planned runtime is Python / FastAPI on Azure Container Apps.
 
-The local processing foundation is implemented as a Python package. It validates the candidate versioned evidence envelope and broker identifiers, redacts common credential shapes before parsing, structures sanitized logs with an in-memory Drain3 adapter and maps the result to the candidate Correlation contract. Typed receiver, settlement and delivery ports plus in-memory test adapters keep Azure Service Bus and HTTP SDKs outside the domain. The message loop completes only after a confirmed handoff, abandons transient or unexpected failures, dead-letters safe permanent contract failures and supports cooperative shutdown between receives. It does not connect to Service Bus, call Azure OpenAI, perform a real correlation request or expose a business HTTP API yet.
+The processing worker is implemented as a Python package. It validates the candidate versioned evidence envelope and broker identifiers, redacts common credential shapes before parsing, structures sanitized logs with an in-memory Drain3 adapter and maps the result to the candidate Correlation contract. Typed ports keep Azure Service Bus and HTTP SDKs outside the domain. The message loop completes only after a confirmed handoff, abandons transient or unexpected failures, dead-letters safe permanent contract failures and supports cooperative shutdown between receives. The repository includes live Service Bus and Correlation adapters but no deployed resources, approved production identifiers, Azure OpenAI call or inbound business HTTP API.
 
 The Correlation HTTP adapter serializes only the sanitized candidate contract, uses an interchangeable bearer-token provider, enforces HTTPS, and applies deployment-configured timeouts and bounded retries. The Service Bus adapter uses Entra credentials, peek-lock reception, explicit settlement and validated W3C trace propagation; namespace, topic, subscription and receive wait are required deployment inputs. The concrete Correlation audience/application role, broker entities and runtime role assignments remain pending IaC decisions. The Azure OpenAI embedding model, dimension, endpoint/SDK and grants remain pending decisions. Parser-state persistence and concrete broker re-delivery configuration are also intentionally not selected by this increment.
 
@@ -32,7 +32,24 @@ Run the verified checks:
 git diff --check
 ```
 
-The package has no startup command yet because its documented input is Azure Service Bus and the broker contract remains pending. FastAPI does not by itself authorize a public or inbound business endpoint.
+After supplying the reviewed runtime variables, start the worker with:
+
+```powershell
+.\.venv\Scripts\pipesor-nlp-log-processor.exe
+```
+
+Required variables are `PIPESOR_SERVICE_BUS_NAMESPACE`,
+`PIPESOR_SERVICE_BUS_TOPIC`, `PIPESOR_SERVICE_BUS_SUBSCRIPTION`,
+`PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS`,
+`PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS`,
+`PIPESOR_CORRELATION_ENDPOINT`, `PIPESOR_CORRELATION_SCOPE`,
+`PIPESOR_CORRELATION_TIMEOUT_SECONDS`,
+`PIPESOR_CORRELATION_MAX_ATTEMPTS` and
+`PIPESOR_CORRELATION_BACKOFF_SECONDS`. `PIPESOR_LOG_LEVEL` is optional and
+defaults to `INFO`. Values remain reviewed deployment inputs; this repository
+does not provide production identifiers or credentials.
+
+The worker validates all settings before creating clients, consumes Service Bus, delivers sanitized evidence to Correlation and handles `SIGINT`/`SIGTERM` between receives. It does not expose a public or inbound business HTTP endpoint.
 
 CI runs the same Python checks and validates PR titles, required PR-description sections and commit headers against the organization Conventional Commit policy. Human review is still required for English imperative summaries, reported verification and behavioral correctness.
 

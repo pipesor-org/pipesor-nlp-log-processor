@@ -33,6 +33,22 @@ class TokenProvider(Protocol):
     def get_token(self) -> str: ...
 
 
+class AzureCredentialTokenProvider:
+    def __init__(self, credential: object, scope: str) -> None:
+        self._credential = credential
+        self._scope = scope
+
+    def get_token(self) -> str:
+        try:
+            token = self._credential.get_token(self._scope)  # type: ignore[attr-defined]
+            value = token.token
+            if not isinstance(value, str) or not value:
+                raise ValueError
+            return value
+        except Exception as error:
+            raise TransientDeliveryError("correlation_token_unavailable") from error
+
+
 class TransportFailure(RuntimeError):
     """A safe network failure without response or payload details."""
 
