@@ -98,21 +98,31 @@ def test_loads_typed_runtime_settings() -> None:
         {
             "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal/",
             "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "2.5",
+            "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
+            "PIPESOR_CORRELATION_BACKOFF_SECONDS": "0.25",
         }
     )
     assert settings.correlation_endpoint == "https://correlation.internal"
     assert settings.correlation_timeout_seconds == 2.5
+    assert settings.correlation_max_attempts == 3
+    assert settings.correlation_backoff_seconds == 0.25
 
 
 def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
     with pytest.raises(InvalidSettings, match="HTTPS"):
         RuntimeSettings.from_environment(
-            {"PIPESOR_CORRELATION_ENDPOINT": "http://correlation.internal"}
+            {
+                "PIPESOR_CORRELATION_ENDPOINT": "http://correlation.internal",
+                "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
+                "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
+            }
         )
     with pytest.raises(InvalidSettings, match="between 0 and 60"):
         RuntimeSettings.from_environment(
             {
                 "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal",
                 "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "0",
+                "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
+                "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
             }
         )
