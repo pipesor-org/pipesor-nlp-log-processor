@@ -12,6 +12,7 @@ The Azure OpenAI embedding model, dimension, endpoint/SDK and grants remain pend
 
 - [Architecture](docs/architecture.md): service boundaries, integration context and current sources in `pipesor-docs`.
 - [Deployment contract](docs/deployment-contract.md): development baseline, delivery requirements and unresolved contracts.
+- [Integration contracts](docs/integration-contracts.md): candidate Service Bus input, Correlation handoff, delivery semantics, authentication and Drain3 lifecycle pending cross-service approval.
 - [AGENTS.md](AGENTS.md): repository instructions for coding agents.
 
 ## Development and verification

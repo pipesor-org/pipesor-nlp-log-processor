@@ -2,6 +2,11 @@
 
 **Status: readiness record; not approved for IaC consumption or deployment.** Prepared for PD-035. [Architecture consumption](architecture.md) records the consulted source revision `c84ef3e4629fcb0c38315f32b641a5fb949e450d`, model IDs, applicable ADRs and committed PD-033–036. ADR-019 governs the current MVP alignment.
 
+The [candidate integration contracts](integration-contracts.md) propose concrete
+Service Bus input, Correlation handoff, failure, authentication and Drain3-state
+semantics for review. They are not accepted contracts and do not close the pending
+decisions listed here.
+
 **Documented fact** means recorded in those sources/policies, not proven implementation or independent approval evidence. **Proposal** requires acceptance; **Unknown** remains pending. No application images, endpoints, credentials or migrations are implemented in this service increment. IaC contains infrastructure preparation; provisioning is not evidenced here.
 
 ## Identity and runtime
