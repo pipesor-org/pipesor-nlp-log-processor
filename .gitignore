@@ -4,3 +4,10 @@
 *.pem
 *.key
 .DS_Store
+.venv/
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
