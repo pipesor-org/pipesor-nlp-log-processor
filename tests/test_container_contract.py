@@ -12,6 +12,7 @@ def test_container_uses_pinned_python_and_non_root_runtime() -> None:
     assert 'ENTRYPOINT ["pipesor-nlp-log-processor"]' in dockerfile
     assert "HEALTHCHECK" not in dockerfile
     assert "COPY ." not in dockerfile
+    assert "apt-get upgrade --yes --no-install-recommends" in dockerfile
 
 
 def test_container_example_lists_every_runtime_variable() -> None:

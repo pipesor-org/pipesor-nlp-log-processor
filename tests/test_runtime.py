@@ -1,5 +1,7 @@
 import json
 import logging
+import signal
+from threading import Event
 
 import pytest
 
@@ -9,7 +11,7 @@ from pipesor_nlp_log_processor.infrastructure.observability import (
     JsonDeliveryObserver,
     JsonLoggingObserver,
 )
-from pipesor_nlp_log_processor.main import main
+from pipesor_nlp_log_processor.main import install_shutdown_handlers, main
 
 
 class AccessToken:
@@ -85,6 +87,20 @@ def test_main_fails_fast_on_invalid_configuration(
     captured = capsys.readouterr()
     assert "configuration_invalid" in captured.err
     assert "runtime_started" not in captured.err
+
+
+def test_shutdown_handler_sets_stop_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    handlers: dict[signal.Signals, object] = {}
+    monkeypatch.setattr(signal, "signal", handlers.__setitem__)
+    stop = Event()
+
+    install_shutdown_handlers(stop)
+    handler = handlers[signal.SIGTERM]
+    assert callable(handler)
+    handler(signal.SIGTERM, None)
+
+    assert stop.is_set()
+    assert handlers[signal.SIGINT] is handler
 
 
 def test_retry_metric_uses_bounded_fields_without_identifiers(
