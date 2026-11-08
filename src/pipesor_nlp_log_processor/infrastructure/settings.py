@@ -16,6 +16,7 @@ class RuntimeSettings:
     correlation_endpoint: str
     correlation_scope: str
     correlation_timeout_seconds: float
+    correlation_total_timeout_seconds: float
     correlation_max_attempts: int
     correlation_backoff_seconds: float
     log_level: str
@@ -46,6 +47,9 @@ class RuntimeSettings:
             raise InvalidSettings("PIPESOR_LOG_LEVEL is invalid")
         try:
             timeout = float(environment.get("PIPESOR_CORRELATION_TIMEOUT_SECONDS", "5"))
+            total_timeout = float(
+                environment["PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS"]
+            )
             receive_wait = float(environment["PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS"])
             lock_renewal = float(
                 environment["PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS"]
@@ -59,6 +63,10 @@ class RuntimeSettings:
         if not 0 < timeout <= 60:
             raise InvalidSettings(
                 "PIPESOR_CORRELATION_TIMEOUT_SECONDS must be between 0 and 60"
+            )
+        if not timeout <= total_timeout <= 300:
+            raise InvalidSettings(
+                "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS must be between the request timeout and 300"
             )
         if not 0 < receive_wait <= 300:
             raise InvalidSettings(
@@ -85,6 +93,7 @@ class RuntimeSettings:
             endpoint.rstrip("/"),
             scope,
             timeout,
+            total_timeout,
             attempts,
             backoff,
             log_level,

@@ -93,6 +93,21 @@ def test_rejects_broker_property_mismatch() -> None:
     assert caught.value.field_paths == ("message_id",)
 
 
+def test_rejects_filter_property_mismatch_with_body() -> None:
+    message = ReceivedMessage(
+        received().body,
+        "msg-1",
+        "corr-1",
+        broker_event_type="different_event",
+        broker_schema_version="1.0",
+    )
+
+    with pytest.raises(InvalidIntegrationMessage, match="broker_property_mismatch") as caught:
+        handler(RecordingEvidenceDelivery()).execute(message)
+
+    assert caught.value.field_paths == ("event_type",)
+
+
 def test_loads_typed_runtime_settings() -> None:
     settings = RuntimeSettings.from_environment(
         {
@@ -104,6 +119,7 @@ def test_loads_typed_runtime_settings() -> None:
             "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal/",
             "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
             "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "2.5",
+            "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
             "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
             "PIPESOR_CORRELATION_BACKOFF_SECONDS": "0.25",
         }
@@ -111,6 +127,7 @@ def test_loads_typed_runtime_settings() -> None:
     assert settings.correlation_endpoint == "https://correlation.internal"
     assert settings.correlation_scope == "api://correlation/.default"
     assert settings.correlation_timeout_seconds == 2.5
+    assert settings.correlation_total_timeout_seconds == 35
     assert settings.correlation_max_attempts == 3
     assert settings.correlation_backoff_seconds == 0.25
     assert settings.service_bus_namespace == "pipesor-dev.servicebus.windows.net"
@@ -131,6 +148,7 @@ def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
                 "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
                 "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
                 "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
+                "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
             }
         )
     with pytest.raises(InvalidSettings, match="between 0 and 60"):
@@ -144,6 +162,7 @@ def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
                 "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal",
                 "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
                 "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "0",
+                "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
                 "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
                 "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
             }

@@ -21,6 +21,12 @@ selects missing environment values nor proves that any resource exists in Azure.
   executes 44 tests, builds the image and verifies its safe configuration failure.
 - No image has been published to GHCR and no live Azure integration has run.
 
+NLP currently ends after protected evidence sanitization, Drain3 structuring and
+Correlation delivery. Moving embedding ownership to RAG is a candidate architecture
+decision, not an accepted fact: the canonical model still names an NLP embedding
+capability. No NLP OpenAI SDK, model, dimension, endpoint or permission may be
+introduced until that model decision is recorded.
+
 ## Current IaC boundary
 
 The referenced IaC revision can optionally create a public, Entra-only Service Bus
@@ -45,6 +51,7 @@ namespace name and managed-environment ID. It does **not** create:
 | `PIPESOR_CORRELATION_ENDPOINT` | Correlation deployment output; internal HTTPS base URL. | Blocked: no Correlation app/route deployment contract. |
 | `PIPESOR_CORRELATION_SCOPE` | Correlation identity owner; one Entra `/.default` scope. | Blocked: audience/application role not accepted. |
 | `PIPESOR_CORRELATION_TIMEOUT_SECONDS` | Backend/IaC accepted request budget. | Required by worker; value not accepted. |
+| `PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS` | Backend/IaC accepted end-to-end authentication, HTTP and wait deadline. | Required by worker; value not accepted. |
 | `PIPESOR_CORRELATION_MAX_ATTEMPTS` | Backend/IaC accepted bounded retry policy. | Required by worker; value not accepted. |
 | `PIPESOR_CORRELATION_BACKOFF_SECONDS` | Backend/IaC accepted retry delay. | Required by worker; value not accepted. |
 | `PIPESOR_LOG_LEVEL` | Deployment setting; defaults to `INFO`. | Interface implemented; environment value optional. |
@@ -66,6 +73,20 @@ After the blocked values and contracts are accepted, the smallest IaC increment 
    subscription, not namespace management or sender access.
 6. Grant the same identity only the accepted Correlation application role/audience.
 7. Route console output through the existing Container Apps/Log Analytics platform.
+
+The reviewed initial `dev` proposal is topic `protected-workflow-evidence`, NLP
+subscription `nlp-log-processor`, a restrictive
+`event_type = 'protected_workflow_evidence'` filter, seven-day active-message TTL,
+maximum delivery count 10, 60-second initial lock, 300-second renewal ceiling and
+five-second receive wait. This remains conditional on Ingestion, Pipeline and
+Log/Event accepting the shared topic and application-property contract. IaC must
+remove the subscription's default all-pass rule when installing the restrictive
+filter; otherwise the filter provides no isolation.
+
+The active-message TTL does not expire DLQ contents. Before activation, maintainers
+must own a bounded inspection, authorized replay and disposal procedure. Messages
+that failed evidence-protection checks must never be replayed automatically or
+exposed through diagnostic tooling.
 
 CPU, memory, replica bounds, Service Bus scale rules, termination grace period and
 probe behavior remain unselected. Because there is no inbound endpoint, IaC must

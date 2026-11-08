@@ -23,7 +23,11 @@ class RawMessage:
         self.body = body
         self.message_id = message_id
         self.correlation_id = correlation_id
-        self.application_properties = properties
+        self.application_properties = {
+            "event_type": "protected_workflow_evidence",
+            "schema_version": "1.0",
+            **(properties or {}),
+        }
 
 
 class FakeReceiver:
@@ -88,6 +92,16 @@ def test_drops_invalid_trace_context_instead_of_forwarding_it() -> None:
     assert received is not None
     assert received.traceparent is None
     assert received.tracestate is None
+
+
+def test_marks_missing_filter_properties_for_dead_letter() -> None:
+    raw = RawMessage()
+    raw.application_properties = {}
+
+    received = AzureServiceBusAdapter(FakeReceiver([raw])).receive()
+
+    assert received is not None
+    assert received.contract_error == "missing_broker_application_property"
 
 
 def test_settles_the_original_sdk_message() -> None:

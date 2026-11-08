@@ -8,7 +8,7 @@ from typing import Any
 
 from azure.identity import DefaultAzureCredential
 
-from .application.message_loop import MessageLoop
+from .application.message_loop import ConsumptionPaused, MessageLoop
 from .application.process_evidence import ProcessEvidence
 from .application.process_log import ProcessLog
 from .infrastructure.correlation_http import (
@@ -46,6 +46,7 @@ def build_message_loop(
             RetryPolicy(
                 settings.correlation_max_attempts,
                 settings.correlation_backoff_seconds,
+            settings.correlation_total_timeout_seconds,
             ),
             AzureCredentialTokenProvider(credential, settings.correlation_scope),
         )
@@ -97,6 +98,9 @@ def main(environment: Mapping[str, str] | None = None) -> int:
     except KeyboardInterrupt:
         LOGGER.info(_event("shutdown_requested", signal="keyboard_interrupt"))
         return 0
+    except ConsumptionPaused as error:
+        LOGGER.error(_event("consumption_paused", reason=error.code))
+        return 3
     except Exception as error:
         LOGGER.error(_event("runtime_failed", error_type=type(error).__name__))
         return 1

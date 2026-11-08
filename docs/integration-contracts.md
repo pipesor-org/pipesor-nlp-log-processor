@@ -23,7 +23,9 @@ Content type is `application/json; charset=utf-8`. Names use snake_case inside
 the payload. The broker message ID must equal `message_id`; `correlation_id` must
 also be copied to the broker correlation property. W3C `traceparent` and
 `tracestate`, when present, travel as broker application properties rather than
-business payload fields. Unknown additive fields are ignored within a supported
+business payload fields. `event_type` and `schema_version` are required broker
+application properties for subscription filtering and must exactly match the body;
+a mismatch is a permanent contract error. Unknown additive fields are ignored within a supported
 major version.
 
 ```json
@@ -102,6 +104,8 @@ delivery.
 - NLP owns no durable table. Durable deduplication cannot be claimed by this
   service unless an approved owner/store is added. Correlation must therefore
   treat repeated `message_id` values idempotently before this flow is integrated.
+- A restrictive subscription filter requires removing the default all-pass rule.
+  Filters operate on broker application properties, never the JSON body.
 
 ### 2.1 Settlement matrix
 
@@ -115,6 +119,10 @@ delivery.
 | Payload cannot be safely minimized | Do not forward | Quarantine/drop and settlement require an approved security policy; DLQ is not automatically safe because it retains the original body. |
 | Permanent downstream contract rejection | Dead-letter | Propagate a stable rejection code, not the rejected payload. |
 | Repeated transient failure reaches configured maximum delivery count | Broker dead-letter | Maximum count is an environment/IaC value, not selected here. |
+
+Active-message TTL does not expire DLQ content. DLQ inspection, authorized replay
+and disposal require an owned operating procedure. Evidence that failed protection
+checks is never automatically replayed.
 
 Completion happens only after the synchronous Correlation response confirms that
 the handoff succeeded or that the same `message_id` was already accepted. A local
@@ -156,14 +164,24 @@ business `correlation_id`; trace identifiers never replace authorization checks.
 | Accepted and processed | `200` | `{"status":"accepted","message_id":"..."}` |
 | Previously accepted idempotency key | `200` | `{"status":"duplicate","message_id":"..."}` |
 | Caller payload violates the accepted contract | `400` | Stable code and field paths only. |
-| Caller is unauthenticated | `401` | No contract or evidence detail. |
-| Caller lacks service permission | `403` | No contract or evidence detail. |
+| Caller is unauthenticated | `401` | No contract or evidence detail; stop consumption after abandoning the current message. |
+| Caller lacks service permission | `403` | No contract or evidence detail; stop consumption after abandoning the current message. |
 | Temporary inability to process | `503` | Stable retryable code; optional bounded `Retry-After`. |
 
 Timeouts, connection failures, `429` and `5xx` are transient. Other `4xx` contract
 rejections are permanent for that message. NLP must use a bounded timeout and must
-not report success without a complete response. Exact timeout/retry budgets remain
-deployment inputs under PD-035.
+not report success without a complete response. A bounded total delivery deadline
+must cover token acquisition, HTTP attempts and retry waits; a bounded numeric
+`Retry-After` may replace the normal delay only inside that deadline. Exact
+timeout/retry budgets remain deployment inputs under PD-035. `401` and `403` are
+service configuration/authorization failures, not evidence failures: the current
+message is abandoned and consumption stops to prevent valid evidence entering DLQ.
+
+Correlation must durably enforce `message_id` idempotency, including when its
+successful response is lost. Reusing one ID with different content is a conflict,
+not `duplicate`. The required incident/evidence references and temporarily missing
+reference behavior remain a cross-service blocker; NLP must not read another
+service's database to fill that gap.
 
 ## 4. Authentication proposal
 

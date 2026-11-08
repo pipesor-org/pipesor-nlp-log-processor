@@ -2,10 +2,11 @@ import json
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Mapping, Protocol
 
 from ..application.integration_ports import (
+    AuthorizationDeliveryError,
     DeliveryStatus,
     PermanentDeliveryError,
     TransientDeliveryError,
@@ -17,6 +18,7 @@ from ..domain.integration import CorrelationEvidence
 class HttpResponse:
     status_code: int
     body: bytes
+    headers: Mapping[str, str] = field(default_factory=dict)
 
 
 class HttpTransport(Protocol):
@@ -64,9 +66,12 @@ class UrlLibHttpTransport:
         request = urllib.request.Request(url, body, headers=dict(headers), method="POST")
         try:
             with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-                return HttpResponse(response.status, response.read())
+                return HttpResponse(
+                    response.status, response.read(), dict(response.headers.items())
+                )
         except urllib.error.HTTPError as error:
-            return HttpResponse(error.code, error.read())
+            headers = dict(error.headers.items()) if error.headers else {}
+            return HttpResponse(error.code, error.read(), headers)
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             raise TransportFailure("correlation_transport_failure") from error
 
@@ -75,12 +80,15 @@ class UrlLibHttpTransport:
 class RetryPolicy:
     max_attempts: int
     backoff_seconds: float
+    total_timeout_seconds: float
 
     def __post_init__(self) -> None:
         if not 1 <= self.max_attempts <= 10:
             raise ValueError("max_attempts must be between 1 and 10")
         if not 0 <= self.backoff_seconds <= 30:
             raise ValueError("backoff_seconds must be between 0 and 30")
+        if not 0 < self.total_timeout_seconds <= 300:
+            raise ValueError("total_timeout_seconds must be between 0 and 300")
 
 
 class CorrelationHttpDelivery:
@@ -92,6 +100,7 @@ class CorrelationHttpDelivery:
         token_provider: TokenProvider,
         transport: HttpTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if not base_endpoint.startswith("https://"):
             raise ValueError("base_endpoint must use HTTPS")
@@ -101,11 +110,16 @@ class CorrelationHttpDelivery:
         self._token_provider = token_provider
         self._transport = transport or UrlLibHttpTransport()
         self._sleep = sleep
+        self._clock = clock
 
     def deliver(self, evidence: CorrelationEvidence) -> DeliveryStatus:
         body = self._serialize(evidence)
         last_error: TransientDeliveryError | None = None
+        deadline = self._clock() + self._retry_policy.total_timeout_seconds
         for attempt in range(1, self._retry_policy.max_attempts + 1):
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                raise TransientDeliveryError("correlation_delivery_deadline_exceeded")
             try:
                 headers = {
                     "Authorization": f"Bearer {self._token_provider.get_token()}",
@@ -118,11 +132,16 @@ class CorrelationHttpDelivery:
                     headers["traceparent"] = evidence.traceparent
                 if evidence.traceparent and evidence.tracestate:
                     headers["tracestate"] = evidence.tracestate
+                remaining = deadline - self._clock()
+                if remaining <= 0:
+                    raise TransientDeliveryError(
+                        "correlation_delivery_deadline_exceeded"
+                    )
                 response = self._transport.post(
                     self._url,
                     body,
                     headers,
-                    self._timeout_seconds,
+                    min(self._timeout_seconds, remaining),
                 )
                 return self._interpret(response, evidence.message_id)
             except TransportFailure as error:
@@ -132,7 +151,18 @@ class CorrelationHttpDelivery:
                 last_error = error
 
             if attempt < self._retry_policy.max_attempts:
-                self._sleep(self._retry_policy.backoff_seconds * attempt)
+                remaining = deadline - self._clock()
+                delay = (
+                    last_error.retry_after_seconds
+                    if last_error is not None
+                    and last_error.retry_after_seconds is not None
+                    else self._retry_policy.backoff_seconds * attempt
+                )
+                if remaining <= 0 or delay >= remaining:
+                    raise TransientDeliveryError(
+                        "correlation_delivery_deadline_exceeded"
+                    )
+                self._sleep(delay)
 
         raise last_error or TransientDeliveryError("correlation_unavailable")
 
@@ -165,11 +195,26 @@ class CorrelationHttpDelivery:
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
                 raise TransientDeliveryError("invalid_correlation_response") from error
         if response.status_code in (429,) or response.status_code >= 500:
-            raise TransientDeliveryError("correlation_unavailable")
+            retry_after = None
+            header = next(
+                (
+                    value
+                    for name, value in response.headers.items()
+                    if name.lower() == "retry-after"
+                ),
+                None,
+            )
+            if header is not None:
+                try:
+                    parsed = float(header)
+                    retry_after = parsed if parsed >= 0 else None
+                except ValueError:
+                    retry_after = None
+            raise TransientDeliveryError("correlation_unavailable", retry_after)
         if response.status_code == 401:
-            raise PermanentDeliveryError("correlation_unauthenticated")
+            raise AuthorizationDeliveryError("correlation_unauthenticated")
         if response.status_code == 403:
-            raise PermanentDeliveryError("correlation_unauthorized")
+            raise AuthorizationDeliveryError("correlation_unauthorized")
         if 400 <= response.status_code < 500:
             raise PermanentDeliveryError("correlation_contract_rejected")
         raise TransientDeliveryError("invalid_correlation_response")

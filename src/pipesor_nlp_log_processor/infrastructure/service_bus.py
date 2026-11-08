@@ -103,6 +103,8 @@ class AzureServiceBusAdapter:
                 max_lock_renewal_duration=self._max_lock_renewal_seconds,
             )
         traceparent, tracestate = _safe_trace_context(raw)
+        broker_event_type = _application_property(raw, "event_type")
+        broker_schema_version = _application_property(raw, "schema_version")
         contract_error = None
         if raw.message_id is None or raw.correlation_id is None:
             contract_error = "missing_broker_identifier"
@@ -111,12 +113,19 @@ class AzureServiceBusAdapter:
         except ServiceBusMessageError:
             body = b""
             contract_error = "unsupported_message_body"
+        if (
+            contract_error is None
+            and (broker_event_type is None or broker_schema_version is None)
+        ):
+            contract_error = "missing_broker_application_property"
         return ReceivedMessage(
             body=body,
             message_id=str(raw.message_id) if raw.message_id is not None else "",
             correlation_id=str(raw.correlation_id) if raw.correlation_id is not None else "",
             traceparent=traceparent,
             tracestate=tracestate,
+            broker_event_type=broker_event_type,
+            broker_schema_version=broker_schema_version,
             contract_error=contract_error,
             settlement_token=raw,
         )
