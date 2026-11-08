@@ -7,6 +7,10 @@ Service Bus input, Correlation handoff, failure, authentication and Drain3-state
 semantics for review. They are not accepted contracts and do not close the pending
 decisions listed here.
 
+The [IaC handoff](iac-handoff.md) reconciles the implemented worker and container
+with the exact current IaC foundation. It lists every runtime variable, supplier,
+missing resource and activation gate without selecting unresolved values.
+
 **Documented fact** means recorded in those sources/policies, not proven implementation or independent approval evidence. **Proposal** requires acceptance; **Unknown** remains pending. A local container build definition now exists, but no published image, deployed endpoint, credential, migration or Azure provisioning is evidenced here. IaC contains infrastructure preparation; provisioning is not evidenced here.
 
 ## Identity and runtime
@@ -36,7 +40,7 @@ PostgreSQL's `vector` allowlist setting does not execute SQL extension creation,
 | Requirement | Value | Source and status |
 |---|---|---|
 | Delivery unit | Container image for this service. | Documented fact: `deployment.containerization`, ADR-001/018. |
-| Immutable identity | Associate the image with its source commit and digest; promote the same digest through the staged delivery flow. | Documented organization target: CONTRIBUTING artifact promotion. No digest, version, image or automation exists. |
+| Immutable identity | Associate the image with its source commit and digest; promote the same digest through the staged delivery flow. | The local Dockerfile records a supplied source revision and uses a digest-pinned base. No application image digest has been published or accepted. |
 | Release/version | Policy targets Conventional-Commit-derived SemVer and protected `vX.Y.Z` tags after staging, without rebuilding. | The local image records a supplied source revision and package version in OCI labels. Release automation, GHCR image path/tag convention, build/publish responsibility, private-pull credentials and a published digest remain pending under PD-035. |
 | Ownership handoff | Proposed: this service's maintainers supply the tested image/digest and runtime/configuration requirements; IaC maintainers consume the approved delivery inputs for the agreed environment. | Proposal under PD-035; no named build/publish owner or accepted handoff contract is documented. |
 | Promotion responsibility | Independent QA approval before staging and independent product-owner approval before production are policy targets. | Documented organization target. Concrete automation, environment mapping and operational owners remain unknown under PD-035; do not infer them from the sibling IaC implementation. |
@@ -52,18 +56,22 @@ Documented fact: Documented Service Bus subscription input and synchronous REST/
 | Listening port and bind address | Unknown, PD-035; framework defaults are not approved contract values. |
 | Ingress scope, routing, TLS termination and caller authorization | Unknown beyond the documented caller/protocol above; PD-034/035, and PD-036 for workflow access where used. Do not add public exposure. |
 | Liveness/readiness/startup probes | Paths, protocol, port, criteria and timings unknown, PD-035. No health endpoint is selected or implemented. |
-| Startup | Initialization order, dependency retries, startup budget and migration coordination unknown, PD-035. |
-| Shutdown | Graceful termination/drain behavior, time budget and in-flight work handling unknown, PD-035; broker consumers also depend on PD-033 re-delivery agreement. |
+| Startup | The worker validates configuration before creating clients, then constructs identity, broker, parser and delivery adapters. Platform startup budget and dependency retry policy remain unknown. |
+| Shutdown | `SIGINT`/`SIGTERM` stop the loop between receives and close broker, lock-renewal and credential clients. Platform grace period and behavior during a currently blocking receive remain pending. |
 
 ## Configuration and secrets
 
 | Category | Known requirement and supplier | Status/source |
 |---|---|---|
-| Nonsecret integration settings | Service Bus subscription and evidence_correlation_engine address; documented embedding capability under the Foundry foundation (ADR-019), model/dimension pending PD-005. Exact configuration keys, model deployment and parser tuning are unknown. Actual environment values and their suppliers are not assigned. | Targets/capabilities are documented in the model; exact settings and supplier allocation are unknown. |
+| Nonsecret integration settings | The worker validates eleven environment keys covering Service Bus namespace/topic/subscription, receive/lock budgets, Correlation endpoint/scope/timeout/retries and log level. | Exact keys and supplier boundaries are recorded in the [IaC handoff](iac-handoff.md); environment values remain unapproved. |
 | Secret/authentication requirements | Service Bus uses the integrated Entra-only foundation; token handling, scoped grants, suppliers and service-to-service access remain pending. Embedding provider is documented, but the architecture declares no direct NLP-to-OpenAI relationship; authentication/configuration for such an integration needs clarification before permissions are requested (PD-005/027/035). | Unknown except explicitly documented mechanisms; PD-027/035. Secret storage is intentionally undecided. |
 | Delivery of values | Proposed: backend maintainers define/validate the required configuration interface; the authorized environment/integration owners supply approved values through the agreed IaC handoff. | Proposal, PD-035; specific people/teams, rotation and distribution mechanism remain unknown. |
 
-No application environment-variable names, credentials, secret store or runtime defaults are approved by this document. The system-assigned ACA identity lifecycle is selected in IaC; its creation, access grants and user/workflow authentication remain separate requirements.
+The application environment-variable interface is implemented but its deployment
+values are not approved by this document. No connection string, client secret,
+static API key or secret store is requested. The system-assigned ACA identity
+lifecycle is selected in IaC; its creation, access grants and user/workflow
+authentication remain separate requirements.
 
 ## Access and integration
 

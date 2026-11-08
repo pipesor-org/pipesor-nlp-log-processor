@@ -13,6 +13,7 @@ The Correlation HTTP adapter serializes only the sanitized candidate contract, u
 - [Architecture](docs/architecture.md): service boundaries, integration context and current sources in `pipesor-docs`.
 - [Deployment contract](docs/deployment-contract.md): development baseline, delivery requirements and unresolved contracts.
 - [Integration contracts](docs/integration-contracts.md): candidate Service Bus input, Correlation handoff, delivery semantics, authentication and Drain3 lifecycle pending cross-service approval.
+- [IaC handoff](docs/iac-handoff.md): exact worker inputs, current infrastructure gaps and activation gates for the first `dev` deployment slice.
 - [AGENTS.md](AGENTS.md): repository instructions for coding agents.
 
 ## Development and verification
