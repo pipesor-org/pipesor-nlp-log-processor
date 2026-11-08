@@ -19,6 +19,7 @@ class RuntimeSettings:
     correlation_total_timeout_seconds: float
     correlation_max_attempts: int
     correlation_backoff_seconds: float
+    termination_grace_seconds: float
     log_level: str
 
     @classmethod
@@ -56,6 +57,7 @@ class RuntimeSettings:
             )
             attempts = int(environment["PIPESOR_CORRELATION_MAX_ATTEMPTS"])
             backoff = float(environment["PIPESOR_CORRELATION_BACKOFF_SECONDS"])
+            termination_grace = float(environment["PIPESOR_TERMINATION_GRACE_SECONDS"])
         except KeyError as error:
             raise InvalidSettings(f"{error.args[0]} is required") from error
         except ValueError as error:
@@ -84,6 +86,14 @@ class RuntimeSettings:
             raise InvalidSettings(
                 "PIPESOR_CORRELATION_BACKOFF_SECONDS must be between 0 and 30"
             )
+        if not 30 <= termination_grace <= 300:
+            raise InvalidSettings(
+                "PIPESOR_TERMINATION_GRACE_SECONDS must be between 30 and 300"
+            )
+        if receive_wait + total_timeout + 10 > termination_grace:
+            raise InvalidSettings(
+                "Termination grace must cover receive wait, delivery deadline and 10 seconds of cleanup"
+            )
         return cls(
             namespace,
             topic,
@@ -96,6 +106,7 @@ class RuntimeSettings:
             total_timeout,
             attempts,
             backoff,
+            termination_grace,
             log_level,
         )
 

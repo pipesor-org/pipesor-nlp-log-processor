@@ -11,6 +11,7 @@ from pipesor_nlp_log_processor import (
 )
 from pipesor_nlp_log_processor.application.integration_ports import (
     AuthorizationDeliveryError,
+    DeliveryStatus,
     PermanentDeliveryError,
     TransientDeliveryError,
 )
@@ -64,7 +65,13 @@ def loop_for(
         ProcessLog(DrainLogParser(), PatternLogSanitizer()), delivery  # type: ignore[arg-type]
     )
     return (
-        MessageLoop(InMemoryMessageReceiver([received]), settlement, processor, observer),
+        MessageLoop(
+            InMemoryMessageReceiver([received]),
+            settlement,
+            processor,
+            observer,
+            clock=lambda: 0.0,
+        ),
         settlement,
         observer,
     )
@@ -76,7 +83,17 @@ def test_completes_only_after_successful_delivery() -> None:
     assert loop.process_next() is ProcessingOutcome.COMPLETED
     assert settlement.completed == [message()]
     assert not settlement.abandoned
-    assert observer.records == [("completed", "msg-1", "corr-1", None)]
+    assert observer.records == [("completed", "msg-1", "corr-1", None, 0.0)]
+
+
+def test_records_duplicate_as_distinct_successful_outcome() -> None:
+    loop, settlement, observer = loop_for(
+        message(), RecordingEvidenceDelivery(DeliveryStatus.DUPLICATE)
+    )
+
+    assert loop.process_next() is ProcessingOutcome.DUPLICATE
+    assert settlement.completed == [message()]
+    assert observer.records == [("duplicate", "msg-1", "corr-1", None, 0.0)]
 
 
 def test_dead_letters_invalid_contract_with_safe_reason() -> None:
@@ -84,7 +101,13 @@ def test_dead_letters_invalid_contract_with_safe_reason() -> None:
 
     assert loop.process_next() is ProcessingOutcome.DEAD_LETTERED
     assert settlement.dead_lettered[0][1:] == ("invalid_json", ())
-    assert observer.records[0] == ("dead_lettered", "msg-1", "corr-1", "invalid_json")
+    assert observer.records[0] == (
+        "dead_lettered",
+        "msg-1",
+        "corr-1",
+        "invalid_json",
+        0.0,
+    )
 
 
 def test_abandons_transient_delivery_failure() -> None:
@@ -121,6 +144,7 @@ def test_abandons_current_message_and_pauses_on_authorization_failure() -> None:
         "msg-1",
         "corr-1",
         "correlation_unauthorized",
+        0.0,
     )
 
 

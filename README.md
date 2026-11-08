@@ -50,11 +50,19 @@ Required variables are `PIPESOR_SERVICE_BUS_NAMESPACE`,
 `PIPESOR_CORRELATION_TIMEOUT_SECONDS`,
 `PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS`,
 `PIPESOR_CORRELATION_MAX_ATTEMPTS` and
-`PIPESOR_CORRELATION_BACKOFF_SECONDS`. `PIPESOR_LOG_LEVEL` is optional and
+`PIPESOR_CORRELATION_BACKOFF_SECONDS`, plus
+`PIPESOR_TERMINATION_GRACE_SECONDS`. `PIPESOR_LOG_LEVEL` is optional and
 defaults to `INFO`. Values remain reviewed deployment inputs; this repository
 does not provide production identifiers or credentials.
 
 The worker validates all settings before creating clients, consumes Service Bus, delivers sanitized evidence to Correlation and handles `SIGINT`/`SIGTERM` between receives. It does not expose a public or inbound business HTTP endpoint.
+
+Structured stdout telemetry distinguishes accepted and duplicate completion,
+abandonment, dead-letter and authorization pause outcomes. Processing-duration and
+Correlation-retry metric events use only bounded outcome/reason fields; message and
+correlation IDs remain log fields and are not metric dimensions. The validation
+deployment uses a five-second receive wait, 40-second total delivery deadline and
+60-second termination grace budget.
 
 ## Container
 

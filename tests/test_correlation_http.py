@@ -25,6 +25,14 @@ class StaticTokenProvider:
         return "test-token"
 
 
+class RecordingRetryObserver:
+    def __init__(self) -> None:
+        self.records: list[tuple[str, int, float]] = []
+
+    def record_retry(self, reason: str, attempt: int, delay_seconds: float) -> None:
+        self.records.append((reason, attempt, delay_seconds))
+
+
 class StubTransport:
     def __init__(self, results: Iterable[HttpResponse | Exception]) -> None:
         self.results = deque(results)
@@ -106,6 +114,28 @@ def test_retries_transient_responses_with_bounded_backoff() -> None:
     assert delivery(transport, sleeps=sleeps).deliver(evidence()) is DeliveryStatus.ACCEPTED
     assert len(transport.requests) == 3
     assert sleeps == [0.5, 1.0]
+
+
+def test_records_retry_metrics_without_message_identifiers() -> None:
+    observer = RecordingRetryObserver()
+    transport = StubTransport(
+        [
+            HttpResponse(503, b""),
+            HttpResponse(200, b'{"status":"accepted","message_id":"msg-1"}'),
+        ]
+    )
+    adapter = CorrelationHttpDelivery(
+        "https://correlation.internal",
+        2.5,
+        RetryPolicy(3, 0.5, 40),
+        StaticTokenProvider(),
+        transport,
+        lambda _: None,
+        observer=observer,
+    )
+
+    assert adapter.deliver(evidence()) is DeliveryStatus.ACCEPTED
+    assert observer.records == [("correlation_unavailable", 1, 0.5)]
 
 
 def test_exhausted_network_failures_are_safe_and_transient() -> None:

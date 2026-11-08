@@ -43,10 +43,17 @@ class RecordingSettlement:
 
 class RecordingObserver:
     def __init__(self) -> None:
-        self.records: list[tuple[str, str, str, str | None]] = []
+        self.records: list[tuple[str, str, str, str | None, float]] = []
 
     def record(
-        self, outcome: str, message_id: str, correlation_id: str, reason: str | None
+        self,
+        outcome: str,
+        message_id: str,
+        correlation_id: str,
+        reason: str | None,
+        duration_seconds: float,
     ) -> None:
-        self.records.append((outcome, message_id, correlation_id, reason))
+        self.records.append(
+            (outcome, message_id, correlation_id, reason, duration_seconds)
+        )
 

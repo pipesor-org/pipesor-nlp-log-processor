@@ -17,7 +17,7 @@ from .infrastructure.correlation_http import (
     RetryPolicy,
 )
 from .infrastructure.drain_parser import DrainLogParser
-from .infrastructure.observability import JsonLoggingObserver
+from .infrastructure.observability import JsonDeliveryObserver, JsonLoggingObserver
 from .infrastructure.sanitizer import PatternLogSanitizer
 from .infrastructure.service_bus import AzureServiceBusAdapter
 from .infrastructure.settings import InvalidSettings, RuntimeSettings
@@ -49,6 +49,7 @@ def build_message_loop(
             settings.correlation_total_timeout_seconds,
             ),
             AzureCredentialTokenProvider(credential, settings.correlation_scope),
+            observer=JsonDeliveryObserver(LOGGER),
         )
         processor = ProcessEvidence(
             ProcessLog(DrainLogParser(), PatternLogSanitizer()), delivery

@@ -88,10 +88,20 @@ must own a bounded inspection, authorized replay and disposal procedure. Message
 that failed evidence-protection checks must never be replayed automatically or
 exposed through diagnostic tooling.
 
-CPU, memory, replica bounds, Service Bus scale rules, termination grace period and
-probe behavior remain unselected. Because there is no inbound endpoint, IaC must
-not infer a public ingress, port or HTTP probe. Scale-to-zero must not be selected
-without an accepted Service Bus scaler identity/permission and shutdown contract.
+Outside the temporary validation deployment below, production CPU, memory, replica
+bounds, Service Bus scale rules, termination grace and probe behavior remain
+unselected. Because there is no inbound endpoint, IaC must not infer a public
+ingress, port or HTTP probe. Scale-to-zero must not be selected without an accepted
+Service Bus scaler identity/permission and shutdown contract.
+
+For the temporary validation deployment, the reviewed container proposal is no
+ingress, no public port, 0.5 CPU, 1 GiB memory, one fixed replica, no broker scaler
+and a digest-pinned image. The validated shutdown budget is a five-second receive
+wait plus a 40-second total delivery deadline within a 60-second termination grace,
+leaving at least ten seconds for settlement and cleanup. The worker exits on
+irrecoverable authorization/configuration failure so ACA can restart it. No HTTP,
+TCP or executable probe is accepted for this first worker increment; progress must
+be monitored from safe activity, outcome, latency and retry telemetry.
 
 ## Acceptance and activation gates
 
