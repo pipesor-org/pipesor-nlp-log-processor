@@ -12,6 +12,8 @@ class ReceivedMessage:
     correlation_id: str
     traceparent: str | None = None
     tracestate: str | None = None
+    broker_event_type: str | None = None
+    broker_schema_version: str | None = None
     contract_error: str | None = None
     settlement_token: object | None = field(default=None, compare=False, repr=False)
 
@@ -29,6 +31,14 @@ class DeliveryError(RuntimeError):
 
 class TransientDeliveryError(DeliveryError):
     """The handoff may succeed when the broker redelivers the message."""
+
+    def __init__(self, code: str, retry_after_seconds: float | None = None) -> None:
+        super().__init__(code)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class AuthorizationDeliveryError(DeliveryError):
+    """Consumption must stop until service authorization is corrected."""
 
 
 class PermanentDeliveryError(DeliveryError):

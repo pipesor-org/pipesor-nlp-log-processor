@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from pipesor_nlp_log_processor import (
     DrainLogParser,
     PatternLogSanitizer,
@@ -8,10 +10,15 @@ from pipesor_nlp_log_processor import (
     ReceivedMessage,
 )
 from pipesor_nlp_log_processor.application.integration_ports import (
+    AuthorizationDeliveryError,
     PermanentDeliveryError,
     TransientDeliveryError,
 )
-from pipesor_nlp_log_processor.application.message_loop import MessageLoop, ProcessingOutcome
+from pipesor_nlp_log_processor.application.message_loop import (
+    ConsumptionPaused,
+    MessageLoop,
+    ProcessingOutcome,
+)
 from pipesor_nlp_log_processor.infrastructure.simulated import (
     InMemoryMessageReceiver,
     RecordingEvidenceDelivery,
@@ -97,6 +104,24 @@ def test_dead_letters_permanent_delivery_rejection() -> None:
 
     assert loop.process_next() is ProcessingOutcome.DEAD_LETTERED
     assert settlement.dead_lettered[0][1] == "contract_rejected"
+
+
+def test_abandons_current_message_and_pauses_on_authorization_failure() -> None:
+    loop, settlement, observer = loop_for(
+        message(), FailingDelivery(AuthorizationDeliveryError("correlation_unauthorized"))
+    )
+
+    with pytest.raises(ConsumptionPaused, match="correlation_unauthorized"):
+        loop.process_next()
+
+    assert settlement.abandoned == [message()]
+    assert not settlement.dead_lettered
+    assert observer.records[0] == (
+        "paused",
+        "msg-1",
+        "corr-1",
+        "correlation_unauthorized",
+    )
 
 
 def test_abandons_unexpected_failure_without_exposing_exception() -> None:

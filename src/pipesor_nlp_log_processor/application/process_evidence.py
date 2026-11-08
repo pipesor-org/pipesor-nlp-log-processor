@@ -13,6 +13,18 @@ class ProcessEvidence:
         if received.contract_error is not None:
             raise InvalidIntegrationMessage(received.contract_error)
         message = ProtectedEvidenceMessage.from_json(received.body)
+        property_mismatches = tuple(
+            path
+            for path, broker_value, body_value in (
+                ("event_type", received.broker_event_type, "protected_workflow_evidence"),
+                ("schema_version", received.broker_schema_version, message.schema_version),
+            )
+            if broker_value is not None and broker_value != body_value
+        )
+        if property_mismatches:
+            raise InvalidIntegrationMessage(
+                "broker_property_mismatch", property_mismatches
+            )
         mismatches = tuple(
             path
             for path, broker_value, body_value in (

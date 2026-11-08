@@ -2,6 +2,7 @@ from collections.abc import Callable
 from enum import StrEnum
 
 from .integration_ports import (
+    AuthorizationDeliveryError,
     MessageReceiver,
     MessageSettlement,
     PermanentDeliveryError,
@@ -17,6 +18,13 @@ class ProcessingOutcome(StrEnum):
     COMPLETED = "completed"
     ABANDONED = "abandoned"
     DEAD_LETTERED = "dead_lettered"
+    PAUSED = "paused"
+
+
+class ConsumptionPaused(RuntimeError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
 
 
 class MessageLoop:
@@ -39,6 +47,15 @@ class MessageLoop:
 
         try:
             self._processor.execute(message)
+        except AuthorizationDeliveryError as error:
+            self._settlement.abandon(message)
+            self._observer.record(
+                ProcessingOutcome.PAUSED,
+                message.message_id,
+                message.correlation_id,
+                error.code,
+            )
+            raise ConsumptionPaused(error.code) from error
         except InvalidIntegrationMessage as error:
             self._settlement.dead_letter(message, error.code, error.field_paths)
             self._observer.record(

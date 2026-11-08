@@ -63,7 +63,7 @@ Documented fact: Documented Service Bus subscription input and synchronous REST/
 
 | Category | Known requirement and supplier | Status/source |
 |---|---|---|
-| Nonsecret integration settings | The worker validates eleven environment keys covering Service Bus namespace/topic/subscription, receive/lock budgets, Correlation endpoint/scope/timeout/retries and log level. | Exact keys and supplier boundaries are recorded in the [IaC handoff](iac-handoff.md); environment values remain unapproved. |
+| Nonsecret integration settings | The worker validates twelve environment keys covering Service Bus namespace/topic/subscription, receive/lock budgets, Correlation endpoint/scope/request and total timeouts/retries and log level. | Exact keys and supplier boundaries are recorded in the [IaC handoff](iac-handoff.md); environment values remain unapproved. |
 | Secret/authentication requirements | Service Bus uses the integrated Entra-only foundation; token handling, scoped grants, suppliers and service-to-service access remain pending. Embedding provider is documented, but the architecture declares no direct NLP-to-OpenAI relationship; authentication/configuration for such an integration needs clarification before permissions are requested (PD-005/027/035). | Unknown except explicitly documented mechanisms; PD-027/035. Secret storage is intentionally undecided. |
 | Delivery of values | Proposed: backend maintainers define/validate the required configuration interface; the authorized environment/integration owners supply approved values through the agreed IaC handoff. | Proposal, PD-035; specific people/teams, rotation and distribution mechanism remain unknown. |
 
