@@ -33,5 +33,6 @@ def test_container_example_lists_every_runtime_variable() -> None:
         "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS",
         "PIPESOR_CORRELATION_MAX_ATTEMPTS",
         "PIPESOR_CORRELATION_BACKOFF_SECONDS",
+        "PIPESOR_TERMINATION_GRACE_SECONDS",
         "PIPESOR_LOG_LEVEL",
     }

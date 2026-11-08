@@ -5,7 +5,10 @@ import pytest
 
 from pipesor_nlp_log_processor.application.integration_ports import TransientDeliveryError
 from pipesor_nlp_log_processor.infrastructure.correlation_http import AzureCredentialTokenProvider
-from pipesor_nlp_log_processor.infrastructure.observability import JsonLoggingObserver
+from pipesor_nlp_log_processor.infrastructure.observability import (
+    JsonDeliveryObserver,
+    JsonLoggingObserver,
+)
 from pipesor_nlp_log_processor.main import main
 
 
@@ -52,7 +55,7 @@ def test_observer_emits_identifiers_and_outcome_without_payload(caplog: pytest.L
     observer = JsonLoggingObserver(logger)
 
     with caplog.at_level(logging.INFO, logger=logger.name):
-        observer.record("completed", "msg-1", "corr-1", None)
+        observer.record("completed", "msg-1", "corr-1", None, 0.125)
 
     event = json.loads(caplog.messages[0])
     assert event == {
@@ -60,7 +63,17 @@ def test_observer_emits_identifiers_and_outcome_without_payload(caplog: pytest.L
         "outcome": "completed",
         "message_id": "msg-1",
         "correlation_id": "corr-1",
+        "duration_ms": 125.0,
     }
+    metric = json.loads(caplog.messages[1])
+    assert metric == {
+        "event": "nlp_metric",
+        "metric": "message_processing_duration_ms",
+        "value": 125.0,
+        "outcome": "completed",
+    }
+    assert "msg-1" not in caplog.messages[1]
+    assert "corr-1" not in caplog.messages[1]
 
 
 def test_main_fails_fast_on_invalid_configuration(
@@ -72,3 +85,25 @@ def test_main_fails_fast_on_invalid_configuration(
     captured = capsys.readouterr()
     assert "configuration_invalid" in captured.err
     assert "runtime_started" not in captured.err
+
+
+def test_retry_metric_uses_bounded_fields_without_identifiers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = logging.getLogger("test-retry-observer")
+    observer = JsonDeliveryObserver(logger)
+
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        observer.record_retry("correlation_unavailable", 1, 2.0)
+
+    event = json.loads(caplog.messages[0])
+    assert event == {
+        "event": "nlp_metric",
+        "metric": "correlation_retry",
+        "value": 1,
+        "reason": "correlation_unavailable",
+        "attempt": 1,
+        "delay_ms": 2000.0,
+    }
+    assert "message_id" not in event
+    assert "correlation_id" not in event

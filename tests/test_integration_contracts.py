@@ -122,6 +122,7 @@ def test_loads_typed_runtime_settings() -> None:
             "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
             "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
             "PIPESOR_CORRELATION_BACKOFF_SECONDS": "0.25",
+            "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
         }
     )
     assert settings.correlation_endpoint == "https://correlation.internal"
@@ -133,6 +134,7 @@ def test_loads_typed_runtime_settings() -> None:
     assert settings.service_bus_namespace == "pipesor-dev.servicebus.windows.net"
     assert settings.service_bus_receive_wait_seconds == 10
     assert settings.service_bus_max_lock_renewal_seconds == 300
+    assert settings.termination_grace_seconds == 60
 
 
 def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
@@ -149,6 +151,7 @@ def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
                 "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
                 "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
                 "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
+                "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
             }
         )
     with pytest.raises(InvalidSettings, match="between 0 and 60"):
@@ -165,5 +168,49 @@ def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
                 "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
                 "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
                 "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
+                "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
+            }
+        )
+
+
+def test_validation_budget_fits_sixty_second_termination_grace() -> None:
+    settings = RuntimeSettings.from_environment(
+        {
+            "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
+            "PIPESOR_SERVICE_BUS_TOPIC": "protected-workflow-evidence",
+            "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
+            "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "5",
+            "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
+            "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal",
+            "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
+            "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "10",
+            "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "40",
+            "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
+            "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
+            "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
+        }
+    )
+
+    assert settings.service_bus_receive_wait_seconds == 5
+    assert settings.correlation_total_timeout_seconds == 40
+    assert settings.termination_grace_seconds == 60
+
+
+def test_rejects_shutdown_budget_that_exceeds_termination_grace() -> None:
+    with pytest.raises(InvalidSettings, match="Termination grace"):
+        RuntimeSettings.from_environment(
+            {
+                "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
+                "PIPESOR_SERVICE_BUS_TOPIC": "protected-workflow-evidence",
+                "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
+                "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "30",
+                "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
+                "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal",
+                "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
+                "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "10",
+                "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "40",
+                "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
+                "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
+                "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
             }
         )

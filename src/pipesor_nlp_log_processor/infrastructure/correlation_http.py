@@ -35,6 +35,15 @@ class TokenProvider(Protocol):
     def get_token(self) -> str: ...
 
 
+class DeliveryAttemptObserver(Protocol):
+    def record_retry(self, reason: str, attempt: int, delay_seconds: float) -> None: ...
+
+
+class NullDeliveryAttemptObserver:
+    def record_retry(self, reason: str, attempt: int, delay_seconds: float) -> None:
+        return None
+
+
 class AzureCredentialTokenProvider:
     def __init__(self, credential: object, scope: str) -> None:
         self._credential = credential
@@ -101,6 +110,7 @@ class CorrelationHttpDelivery:
         transport: HttpTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        observer: DeliveryAttemptObserver | None = None,
     ) -> None:
         if not base_endpoint.startswith("https://"):
             raise ValueError("base_endpoint must use HTTPS")
@@ -111,6 +121,7 @@ class CorrelationHttpDelivery:
         self._transport = transport or UrlLibHttpTransport()
         self._sleep = sleep
         self._clock = clock
+        self._observer = observer or NullDeliveryAttemptObserver()
 
     def deliver(self, evidence: CorrelationEvidence) -> DeliveryStatus:
         body = self._serialize(evidence)
@@ -162,6 +173,11 @@ class CorrelationHttpDelivery:
                     raise TransientDeliveryError(
                         "correlation_delivery_deadline_exceeded"
                     )
+                self._observer.record_retry(
+                    last_error.code if last_error is not None else "correlation_unavailable",
+                    attempt,
+                    delay,
+                )
                 self._sleep(delay)
 
         raise last_error or TransientDeliveryError("correlation_unavailable")

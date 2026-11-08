@@ -65,6 +65,11 @@ class MessageSettlement(Protocol):
 
 class ProcessingObserver(Protocol):
     def record(
-        self, outcome: str, message_id: str, correlation_id: str, reason: str | None
+        self,
+        outcome: str,
+        message_id: str,
+        correlation_id: str,
+        reason: str | None,
+        duration_seconds: float,
     ) -> None: ...
 
