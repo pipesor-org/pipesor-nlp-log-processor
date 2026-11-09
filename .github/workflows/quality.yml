@@ -49,8 +49,13 @@ jobs:
         run: |
           container_id="$(docker run --detach --entrypoint python \
             pipesor-nlp-log-processor:quality -c \
-            'from threading import Event; from pipesor_nlp_log_processor.main import install_shutdown_handlers; stop = Event(); install_shutdown_handlers(stop); stop.wait()')"
+            'import itertools, time; from threading import Event; from pipesor_nlp_log_processor.main import install_shutdown_handlers; stop = Event(); install_shutdown_handlers(stop); print("signal_handler_ready", flush=True); all(time.sleep(0.1) or not stop.is_set() for _ in itertools.count())')"
           trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
+          for _ in {1..30}; do
+            docker logs "$container_id" 2>&1 | grep -q signal_handler_ready && break
+            sleep 1
+          done
+          docker logs "$container_id" 2>&1 | grep -q signal_handler_ready
           docker stop --timeout 60 "$container_id"
           test "$(docker inspect "$container_id" --format '{{.State.ExitCode}}')" -eq 0
           docker rm "$container_id"
