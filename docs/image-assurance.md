@@ -23,8 +23,13 @@ the non-root identity, safe failure before Azure client creation and delivery of
 `SIGTERM` to the application's shutdown handler with the approved 60-second
 grace period.
 
-Publication to the private GHCR package is a separate, explicitly authorized
-step. When approved, the merged `main` image must be published once under its
-full `sha-<commit>` tag, promoted by digest without rebuilding, and verified as
-private. Azure deployment, registry pull authorization and RBAC remain separate
-delivery changes.
+Private GHCR publication is authorized. After the quality job succeeds on a
+`main` push, a separate least-privilege job downloads that exact validated image
+and publishes it once as
+`ghcr.io/pipesor-org/pipesor-nlp-log-processor:sha-<full-commit>`. The job records
+the registry digest and fails unless the package API reports private visibility.
+It does not publish `latest` or rebuild the image. Release tags must promote this
+digest rather than rebuilding it.
+
+Azure deployment, registry pull authorization and RBAC remain separate delivery
+changes and are not authorized by image publication.
