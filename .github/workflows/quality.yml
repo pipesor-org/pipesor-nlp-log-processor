@@ -13,7 +13,7 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -30,6 +30,7 @@ jobs:
         shell: bash
         run: |
           docker build \
+            --provenance=false \
             --build-arg "VCS_REF=${GITHUB_SHA}" \
             --tag pipesor-nlp-log-processor:quality .
           test "$(docker image inspect pipesor-nlp-log-processor:quality --format '{{.Config.User}}')" = "10001:10001"
@@ -39,6 +40,67 @@ jobs:
           set -e
           test "$status" -eq 2
           grep -q '"event":"configuration_invalid"' container-startup.log
+          docker run --rm --entrypoint python \
+            pipesor-nlp-log-processor:quality -m pip freeze \
+            | grep -v '^pipesor-nlp-log-processor==' \
+            > runtime-requirements.txt
+      - name: Validate graceful container termination
+        shell: bash
+        run: |
+          container_id="$(docker run --detach --entrypoint python \
+            pipesor-nlp-log-processor:quality -c \
+            'import itertools, time; from threading import Event; from pipesor_nlp_log_processor.main import install_shutdown_handlers; stop = Event(); install_shutdown_handlers(stop); print("signal_handler_ready", flush=True); all(time.sleep(0.1) or not stop.is_set() for _ in itertools.count())')"
+          trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
+          for _ in {1..30}; do
+            docker logs "$container_id" 2>&1 | grep -q signal_handler_ready && break
+            sleep 1
+          done
+          docker logs "$container_id" 2>&1 | grep -q signal_handler_ready
+          docker stop --timeout 60 "$container_id"
+          test "$(docker inspect "$container_id" --format '{{.State.ExitCode}}')" -eq 0
+          docker rm "$container_id"
+          trap - EXIT
+      - name: Generate SBOMs and scan runtime dependencies
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          docker image inspect pipesor-nlp-log-processor:quality \
+            --format '{{.Id}}' > artifacts/image-digest.txt
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/work" \
+            ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb \
+            image --pkg-types os --scanners vuln --format cyclonedx \
+            --output /work/artifacts/os-sbom.cdx.json \
+            pipesor-nlp-log-processor:quality
+          set +e
+          python -m pip_audit --requirement runtime-requirements.txt \
+            --format cyclonedx-json --output artifacts/python-sbom.cdx.json
+          python_sbom_status=$?
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/work" \
+            ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb \
+            image --pkg-types os --scanners vuln --severity HIGH,CRITICAL \
+            --ignore-unfixed --exit-code 1 --format json \
+            --output /work/artifacts/os-vulnerabilities.json \
+            pipesor-nlp-log-processor:quality
+          os_scan_status=$?
+          python -m pip_audit --requirement runtime-requirements.txt \
+            --format json --output artifacts/python-vulnerabilities.json
+          python_scan_status=$?
+          set -e
+          test "$python_sbom_status" -eq 0
+          test "$os_scan_status" -eq 0
+          test "$python_scan_status" -eq 0
+      - name: Upload image assurance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nlp-image-assurance-${{ github.sha }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14
       - name: Validate pull request title and body
         if: github.event_name == 'pull_request'
         env:

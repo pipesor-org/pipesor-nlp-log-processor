@@ -17,7 +17,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN groupadd --gid 10001 pipesor \
+RUN apt-get update \
+    && apt-get upgrade --yes --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 pipesor \
     && useradd --uid 10001 --gid pipesor --no-create-home --shell /usr/sbin/nologin pipesor
 
 COPY --from=builder /wheels /wheels

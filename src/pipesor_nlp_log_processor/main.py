@@ -34,6 +34,15 @@ def configure_logging(level: str) -> None:
     logging.basicConfig(level=getattr(logging, level), format="%(message)s", force=True)
 
 
+def install_shutdown_handlers(stop: Event) -> None:
+    def request_stop(signum: int, _: object) -> None:
+        LOGGER.info(_event("shutdown_requested", signal=str(signum)))
+        stop.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+
+
 def build_message_loop(
     settings: RuntimeSettings,
     credential: Any,
@@ -46,7 +55,7 @@ def build_message_loop(
             RetryPolicy(
                 settings.correlation_max_attempts,
                 settings.correlation_backoff_seconds,
-            settings.correlation_total_timeout_seconds,
+                settings.correlation_total_timeout_seconds,
             ),
             AzureCredentialTokenProvider(credential, settings.correlation_scope),
             observer=JsonDeliveryObserver(LOGGER),
@@ -80,13 +89,7 @@ def main(environment: Mapping[str, str] | None = None) -> int:
 
     configure_logging(settings.log_level)
     stop = Event()
-
-    def request_stop(signum: int, _: object) -> None:
-        LOGGER.info(_event("shutdown_requested", signal=str(signum)))
-        stop.set()
-
-    signal.signal(signal.SIGTERM, request_stop)
-    signal.signal(signal.SIGINT, request_stop)
+    install_shutdown_handlers(stop)
 
     credential = DefaultAzureCredential()
     service_bus: AzureServiceBusAdapter | None = None
