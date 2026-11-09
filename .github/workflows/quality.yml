@@ -101,6 +101,21 @@ jobs:
           path: artifacts
           if-no-files-found: error
           retention-days: 14
+      - name: Export validated image for publication
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          mkdir -p image-artifact
+          docker save --output image-artifact/worker-image.tar \
+            pipesor-nlp-log-processor:quality
+      - name: Upload validated image for publication
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: nlp-worker-image-${{ github.sha }}
+          path: image-artifact/worker-image.tar
+          if-no-files-found: error
+          retention-days: 1
       - name: Validate pull request title and body
         if: github.event_name == 'pull_request'
         env:
@@ -118,3 +133,81 @@ jobs:
         env:
           COMMIT_TITLE: ${{ github.event.head_commit.message }}
         run: python tools/validate_contribution.py --message-env COMMIT_TITLE
+
+  publish-private-image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    env:
+      IMAGE_NAME: ghcr.io/pipesor-org/pipesor-nlp-log-processor
+      IMAGE_TAG: sha-${{ github.sha }}
+    steps:
+      - name: Download validated image
+        uses: actions/download-artifact@v8
+        with:
+          name: nlp-worker-image-${{ github.sha }}
+          path: image-artifact
+      - name: Load validated image
+        run: docker load --input image-artifact/worker-image.tar
+      - name: Guard existing package visibility
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --output "$response_file" \
+            --write-out '%{http_code}' \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GHCR_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2026-03-10' \
+            https://api.github.com/orgs/pipesor-org/packages/container/pipesor-nlp-log-processor)"
+          case "$status" in
+            200) test "$(jq --raw-output '.visibility' "$response_file")" = "private" ;;
+            404) ;;
+            *) cat "$response_file"; exit 1 ;;
+          esac
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Publish immutable commit tag
+        shell: bash
+        run: |
+          docker tag pipesor-nlp-log-processor:quality "$IMAGE_NAME:$IMAGE_TAG"
+          docker push "$IMAGE_NAME:$IMAGE_TAG"
+          published_digest="$(docker image inspect "$IMAGE_NAME:$IMAGE_TAG" \
+            --format '{{index .RepoDigests 0}}')"
+          test -n "$published_digest"
+          mkdir -p publication
+          printf 'image=%s\ntag=%s\ndigest=%s\n' \
+            "$IMAGE_NAME" "$IMAGE_TAG" "$published_digest" \
+            > publication/published-image.txt
+      - name: Verify private package visibility
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          package_visibility=""
+          for _ in {1..10}; do
+            package_visibility="$(curl --fail --silent --show-error \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer $GHCR_TOKEN" \
+              --header 'X-GitHub-Api-Version: 2026-03-10' \
+              https://api.github.com/orgs/pipesor-org/packages/container/pipesor-nlp-log-processor \
+              | jq --raw-output '.visibility')" && break
+            sleep 3
+          done
+          test "$package_visibility" = "private"
+      - name: Upload publication evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nlp-image-publication-${{ github.sha }}
+          path: publication
+          if-no-files-found: error
+          retention-days: 30
