@@ -2,7 +2,7 @@
 
 **Status: candidate for backend/IaC acceptance; no Azure action authorized.**
 
-This record reconciles `pipesor-nlp-log-processor@99874e56455d23b050fac91c5895f1c3c6b5a951`
+This record reconciles the current `pipesor-nlp-log-processor` main branch
 with `pipesor-iac@4b42c0c8e66578dfb890ae1cca8c9c31c774026e` for the first
 `dev` deployment slice. It defines the interface between repositories; it neither
 selects missing environment values nor proves that any resource exists in Azure.
@@ -12,14 +12,17 @@ selects missing environment values nor proves that any resource exists in Azure.
 - The worker consumes a Service Bus topic subscription in peek-lock mode through
   `DefaultAzureCredential`, renews locks for a bounded configured duration and
   explicitly completes, abandons or dead-letters the original message.
-- It sends only the sanitized candidate contract to Correlation over HTTPS using
+- It accepts Ingestion evidence v2 using `eventType`/`schemaMajor`, preserves its
+  canonical context and sends only the sanitized Correlation v2 candidate over HTTPS using
   an Entra bearer-token scope supplied at runtime. Timeouts and retries are bounded
   configuration inputs.
 - `SIGINT`/`SIGTERM` request cooperative shutdown between receives. The worker has
   no listening port or inbound HTTP route.
 - The digest-pinned Python 3.14.8 image runs as UID/GID `10001`. GitHub Actions
-  executes 44 tests, builds the image and verifies its safe configuration failure.
-- No image has been published to GHCR and no live Azure integration has run.
+  executes the Python suite, builds and scans the image, verifies termination and
+  records SBOM/digest evidence.
+- A private GHCR image is published only from validated `main`; no live Azure
+  integration has run.
 
 NLP currently ends after protected evidence sanitization, Drain3 structuring and
 Correlation delivery. Moving embedding ownership to RAG is a candidate architecture
@@ -76,7 +79,7 @@ After the blocked values and contracts are accepted, the smallest IaC increment 
 
 The reviewed initial `dev` proposal is topic `protected-workflow-evidence`, NLP
 subscription `nlp-log-processor`, a restrictive
-`event_type = 'protected_workflow_evidence'` filter, seven-day active-message TTL,
+`eventType = 'protected_workflow_evidence' AND schemaMajor = 2` filter, seven-day active-message TTL,
 maximum delivery count 10, 60-second initial lock, 300-second renewal ceiling and
 five-second receive wait. This remains conditional on Ingestion, Pipeline and
 Log/Event accepting the shared topic and application-property contract. IaC must

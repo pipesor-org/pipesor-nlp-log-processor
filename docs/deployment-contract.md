@@ -2,16 +2,16 @@
 
 **Status: readiness record; not approved for IaC consumption or deployment.** Prepared for PD-035. [Architecture consumption](architecture.md) records the consulted source revision `c84ef3e4629fcb0c38315f32b641a5fb949e450d`, model IDs, applicable ADRs and committed PD-033–036. ADR-019 governs the current MVP alignment.
 
-The [candidate integration contracts](integration-contracts.md) propose concrete
-Service Bus input, Correlation handoff, failure, authentication and Drain3-state
-semantics for review. They are not accepted contracts and do not close the pending
-decisions listed here.
+The [integration contracts](integration-contracts.md) adopt the locally approved
+Ingestion evidence v2 input and retain the Correlation v2 handoff as a candidate
+until its owner implements and accepts it. They do not close the deployment,
+identity or operational decisions listed here.
 
 The [IaC handoff](iac-handoff.md) reconciles the implemented worker and container
 with the exact current IaC foundation. It lists every runtime variable, supplier,
 missing resource and activation gate without selecting unresolved values.
 
-**Documented fact** means recorded in those sources/policies, not proven implementation or independent approval evidence. **Proposal** requires acceptance; **Unknown** remains pending. A local container build definition now exists, but no published image, deployed endpoint, credential, migration or Azure provisioning is evidenced here. IaC contains infrastructure preparation; provisioning is not evidenced here.
+**Documented fact** means recorded in those sources/policies, not proven implementation or independent approval evidence. **Proposal** requires acceptance; **Unknown** remains pending. A private GHCR image is published by the quality workflow after validation, but no deployed endpoint, credential, migration or Azure provisioning is evidenced here. IaC contains infrastructure preparation; provisioning is not evidenced here.
 
 ## Identity and runtime
 

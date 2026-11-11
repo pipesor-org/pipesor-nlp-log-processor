@@ -15,7 +15,7 @@ VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 class RawMessage:
     def __init__(
         self,
-        body: Iterable[bytes] = (b'{"schema_version":"1.0"}',),
+        body: Iterable[bytes] = (b'{"schema_version":"2.0"}',),
         message_id: object = "msg-1",
         correlation_id: object = "corr-1",
         properties: dict[object, object] | None = None,
@@ -24,8 +24,8 @@ class RawMessage:
         self.message_id = message_id
         self.correlation_id = correlation_id
         self.application_properties = {
-            "event_type": "protected_workflow_evidence",
-            "schema_version": "1.0",
+            "eventType": "protected_workflow_evidence",
+            "schemaMajor": 2,
             **(properties or {}),
         }
 
@@ -82,6 +82,8 @@ def test_receives_peek_lock_message_and_preserves_safe_trace_context() -> None:
     assert received.correlation_id == "corr-1"
     assert received.traceparent == VALID_TRACEPARENT
     assert received.tracestate == "vendor=value"
+    assert received.broker_event_type == "protected_workflow_evidence"
+    assert received.broker_schema_major == 2
     assert received.settlement_token is raw
     assert renewer.registration == (receiver, raw, 180)
 
@@ -98,6 +100,15 @@ def test_marks_missing_filter_properties_for_dead_letter() -> None:
     raw = RawMessage()
     raw.application_properties = {}
 
+    received = AzureServiceBusAdapter(FakeReceiver([raw])).receive()
+
+    assert received is not None
+    assert received.contract_error == "missing_broker_application_property"
+
+
+@pytest.mark.parametrize("schema_major", ["2", True, 2.0])
+def test_rejects_non_integer_schema_major(schema_major: object) -> None:
+    raw = RawMessage(properties={"schemaMajor": schema_major})
     received = AzureServiceBusAdapter(FakeReceiver([raw])).receive()
 
     assert received is not None

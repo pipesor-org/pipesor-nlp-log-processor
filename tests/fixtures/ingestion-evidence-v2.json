@@ -1,0 +1,37 @@
+{
+  "schema_version": "2.0",
+  "event_type": "protected_workflow_evidence",
+  "message_id": "cf6b69cf-a28d-49f3-bceb-000000000001",
+  "occurred_at": "2026-11-08T09:20:31.123456789Z",
+  "source_updated_at": "2026-11-08T09:20:40.987654321Z",
+  "correlation_id": "ci-investigation-204",
+  "source": "github_actions",
+  "capture_context": {
+    "tenant_id": "d91d1df6-ae89-40c2-99b5-20edfb3e9ed0",
+    "github_account_id": "6802100000000000000000000",
+    "github_installation_id": "7710600000000000000000000",
+    "scope_revision": "scope-rev-12"
+  },
+  "pipeline": {
+    "github_repository_id": "92233720368547758081234567",
+    "github_workflow_id": "184467440737095516170"
+  },
+  "execution": {
+    "github_run_id": "999999999999999999999999999",
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure"
+  },
+  "commit": {
+    "sha": "abcdef0123456789abcdef0123456789abcdef01"
+  },
+  "service": null,
+  "environment": null,
+  "evidence": {
+    "stage": "INFRASTRUCTURE",
+    "job": "job-[redacted]",
+    "summary": "Failure [redacted]",
+    "excerpt": "Trace [redacted]",
+    "sequence": 4294967303
+  }
+}

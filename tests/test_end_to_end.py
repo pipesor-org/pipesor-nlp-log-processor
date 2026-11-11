@@ -13,14 +13,15 @@ from pipesor_nlp_log_processor.infrastructure.simulated import RecordingObserver
 
 
 TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+MESSAGE_ID = "cf6b69cf-a28d-49f3-bceb-000000000001"
 
 
 class RawMessage:
-    message_id = "msg-1"
+    message_id = MESSAGE_ID
     correlation_id = "corr-1"
     application_properties = {
-        "event_type": "protected_workflow_evidence",
-        "schema_version": "1.0",
+        "eventType": "protected_workflow_evidence",
+        "schemaMajor": 2,
         "traceparent": TRACEPARENT,
     }
 
@@ -28,24 +29,36 @@ class RawMessage:
         self.body = [
             json.dumps(
                 {
-                    "schema_version": "1.0",
+                    "schema_version": "2.0",
                     "event_type": "protected_workflow_evidence",
-                    "message_id": "msg-1",
+                    "message_id": MESSAGE_ID,
                     "occurred_at": "2026-11-08T00:00:00Z",
+                    "source_updated_at": "2026-11-08T00:01:00Z",
                     "correlation_id": "corr-1",
                     "source": "github_actions",
+                    "capture_context": {
+                        "tenant_id": "d91d1df6-ae89-40c2-99b5-20edfb3e9ed0",
+                        "github_account_id": "1",
+                        "github_installation_id": "2",
+                        "scope_revision": "scope-1",
+                    },
                     "pipeline": {
-                        "repository": "pipesor-org/example",
-                        "workflow": "ci",
+                        "github_repository_id": "3",
+                        "github_workflow_id": "4",
                     },
                     "execution": {
-                        "execution_id": "exec-1",
-                        "external_run_id": "42",
+                        "github_run_id": "42",
+                        "run_attempt": 1,
+                        "status": "completed",
+                        "conclusion": "failure",
                     },
+                    "commit": {"sha": "a" * 40},
+                    "service": None,
+                    "environment": None,
                     "evidence": {
                         "stage": "BUILD",
                         "summary": "Build failed",
-                        "excerpt": "request failed token=secret-value status=500",
+                        "excerpt": 'request failed {"token": "secret value"} status=500',
                     },
                 }
             ).encode()
@@ -87,7 +100,10 @@ class CorrelationTransport:
     ) -> HttpResponse:
         self.body = body
         self.headers = headers
-        return HttpResponse(200, b'{"status":"duplicate","message_id":"msg-1"}')
+        return HttpResponse(
+            200,
+            json.dumps({"status": "duplicate", "message_id": MESSAGE_ID}).encode(),
+        )
 
 
 def test_service_bus_to_sanitized_correlation_duplicate_flow() -> None:
@@ -116,7 +132,10 @@ def test_service_bus_to_sanitized_correlation_duplicate_flow() -> None:
     assert receiver.completed == [raw]
     assert not receiver.abandoned
     delivered = json.loads(transport.body)
-    assert "secret-value" not in delivered["sanitized_content"]
-    assert delivered["message_id"] == "msg-1"
+    assert "secret value" not in delivered["sanitized_content"]
+    assert delivered["message_id"] == MESSAGE_ID
+    assert delivered["contract_version"] == "2.0"
+    assert delivered["capture_context"]["github_installation_id"] == "2"
+    assert delivered["execution"]["run_attempt"] == 1
     assert transport.headers["traceparent"] == TRACEPARENT
-    assert observer.records == [("duplicate", "msg-1", "corr-1", None, 0.0)]
+    assert observer.records == [("duplicate", MESSAGE_ID, "corr-1", None, 0.0)]

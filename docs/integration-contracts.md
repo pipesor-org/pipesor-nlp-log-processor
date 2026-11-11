@@ -1,6 +1,9 @@
-# NLP integration contracts — candidate v1
+# NLP integration contracts — Ingestion evidence v2
 
-**Status: proposal for review; not approved for implementation or deployment.**
+**Status: the Ingestion evidence v2 input was approved locally on 2026-11-08
+and is implemented by both producer and consumer. The Correlation v2 peer remains
+a candidate until its owner implements and accepts it. This does not authorize a
+cloud deployment, broker rule or permission.**
 
 This document narrows PD-033/034/035 for the existing
 `azure_service_bus -> nlp_log_processor -> evidence_correlation_engine` flow. It
@@ -23,27 +26,39 @@ Content type is `application/json; charset=utf-8`. Names use snake_case inside
 the payload. The broker message ID must equal `message_id`; `correlation_id` must
 also be copied to the broker correlation property. W3C `traceparent` and
 `tracestate`, when present, travel as broker application properties rather than
-business payload fields. `event_type` and `schema_version` are required broker
-application properties for subscription filtering and must exactly match the body;
+business payload fields. `eventType` and integer `schemaMajor` are required broker
+application properties for subscription filtering and must agree with the body;
 a mismatch is a permanent contract error. Unknown additive fields are ignored within a supported
 major version.
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "event_type": "protected_workflow_evidence",
-  "message_id": "source-stable-id",
+  "message_id": "cf6b69cf-a28d-49f3-bceb-19776113a5a8",
   "occurred_at": "2026-11-07T07:30:00Z",
+  "source_updated_at": "2026-11-07T07:31:00Z",
   "correlation_id": "corr-1042",
   "source": "github_actions",
+  "capture_context": {
+    "tenant_id": "d91d1df6-ae89-40c2-99b5-20edfb3e9ed0",
+    "github_account_id": "68021",
+    "github_installation_id": "77106",
+    "scope_revision": "scope-rev-12"
+  },
   "pipeline": {
-    "repository": "pipesor-org/example",
-    "workflow": "ci"
+    "github_repository_id": "73109",
+    "github_workflow_id": "4802"
   },
   "execution": {
-    "execution_id": "logical-execution-id",
-    "external_run_id": "123456789"
+    "github_run_id": "123456789",
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure"
   },
+  "commit": {"sha": "a17c4db0123456789abcdef0123456789abcdef0"},
+  "service": null,
+  "environment": null,
   "evidence": {
     "stage": "BUILD",
     "job": "test",
@@ -58,16 +73,19 @@ major version.
 
 | Field | Requirement | Notes |
 |---|---|---|
-| `schema_version` | Required | Exact `1.x` support policy remains to be accepted. |
+| `schema_version` | Required | Exact supported value is `2.0`. |
 | `event_type` | Required | Must be `protected_workflow_evidence` for this candidate. |
 | `message_id` | Required | Stable across redelivery; carries idempotency, not authorization. |
 | `occurred_at` | Required | RFC 3339 UTC source observation time. |
+| `source_updated_at` | Required | RFC 3339 UTC upstream snapshot version time. |
 | `correlation_id` | Required | Opaque text; must contain no sensitive information. |
 | `source` | Required | Authorized operational provenance; initial value is `github_actions`. |
-| `pipeline.repository` | Required | Canonical owner/repository name; authorization must already be established upstream. |
-| `pipeline.workflow` | Required | External workflow identity/name; exact canonical identifier remains cross-service review. |
-| `execution.execution_id` | Required | Logical execution reference; ownership/assignment and UUID algorithm remain PD-031/032. |
-| `execution.external_run_id` | Required for GitHub Actions | Preserve as text; never reinterpret as internal authorization. |
+| `capture_context` | Required | Tenant UUID, positive-decimal account/installation IDs and scope revision. |
+| `pipeline.github_repository_id` / `github_workflow_id` | Required | Positive-decimal external identities. |
+| `execution.github_run_id` / `run_attempt` | Required | Positive-decimal run ID and positive attempt. |
+| `execution.status` / `conclusion` | Required | Initial slice is completed `failure` or `timed_out`. |
+| `commit.sha` | Required | Canonical lowercase SHA-1 or SHA-256 text. |
+| `service` / `environment` | Required, nullable | Preserve upstream values; never infer defaults. |
 | `evidence.stage` | Required | Must map to the accepted `PipelineStage` vocabulary. |
 | `evidence.job` | Optional | External job when present. |
 | `evidence.summary` | Required | Normalized and sanitized upstream. |
@@ -79,11 +97,17 @@ personal data not required for the use case or a replacement Blob locator. NLP
 re-sanitizes the excerpt as defense in depth before parsing. A sanitization miss
 is a security failure, not a reason to publish the original value in diagnostics.
 
+The consumer compatibility test keeps a semantically identical JSON copy of Ingestion fixture
+`evidence-attempt-1.json` from
+`pipesor-ingestion-normalization-service@70322e6a51fbc218818460a89dd5d9d2ec558ea9`.
+This gives each repository independent CI while preserving a reproducible producer
+artifact; coordinated contract changes must update both fixtures.
+
 ### 1.3 Compatibility
 
 - Major schema changes require a new `schema_version` major and coordinated
   producer/consumer rollout.
-- Additive optional fields are compatible within major version 1.
+- Additive optional fields are compatible within major version 2.
 - Removing, renaming or changing the meaning/type of a required field is breaking.
 - Consumers reject unsupported major versions without attempting best-effort
   parsing.
@@ -136,14 +160,31 @@ review and does not authorize public ingress.
 
 ```json
 {
-  "contract_version": "1.0",
-  "message_id": "source-stable-id",
+  "contract_version": "2.0",
+  "message_id": "cf6b69cf-a28d-49f3-bceb-19776113a5a8",
   "correlation_id": "corr-1042",
-  "execution_id": "logical-execution-id",
   "source": "github_actions",
-  "observed_at": "2026-11-07T07:30:00Z",
+  "occurred_at": "2026-11-07T07:30:00Z",
+  "source_updated_at": "2026-11-07T07:31:00Z",
+  "capture_context": {
+    "tenant_id": "d91d1df6-ae89-40c2-99b5-20edfb3e9ed0",
+    "github_account_id": "68021",
+    "github_installation_id": "77106",
+    "scope_revision": "scope-rev-12"
+  },
+  "pipeline": {"github_repository_id": "73109", "github_workflow_id": "4802"},
+  "execution": {"github_run_id": "123456789", "run_attempt": 1, "status": "completed", "conclusion": "failure"},
+  "commit": {"sha": "a17c4db0123456789abcdef0123456789abcdef0"},
+  "service": null,
+  "environment": null,
+  "pipeline_id": "b563bc93-451f-5c62-9219-9e112a6ea48e",
+  "execution_id": "64b14884-9aea-5f0e-a8ea-27958ff03a5e",
+  "incident_id": "413707f0-9e5b-5ab1-b5fb-faeb8d6b1914",
+  "evidence_id": "152d3443-b1c3-526b-afc2-394414a55998",
   "stage": "BUILD",
   "job": "test",
+  "sequence": 42,
+  "sanitized_summary": "Build step failed",
   "sanitized_content": "dependency resolution failed for package example",
   "template": "dependency resolution failed for package <*>"
 }

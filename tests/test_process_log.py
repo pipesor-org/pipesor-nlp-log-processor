@@ -41,6 +41,22 @@ def test_sanitizes_secrets_before_parsing_and_preserves_context() -> None:
     assert result.source == "github-actions"
 
 
+@pytest.mark.parametrize(
+    ("content", "secret"),
+    [
+        ('{"password": "synthetic secret with spaces"}', "synthetic secret"),
+        ('password="quoted secret with spaces"', "quoted secret"),
+        ("client_secret='single quoted secret'", "single quoted secret"),
+        ("token=unquoted-secret", "unquoted-secret"),
+    ],
+)
+def test_sanitizes_common_assignment_formats(content: str, secret: str) -> None:
+    sanitized = processor().sanitize(content)
+
+    assert secret not in sanitized
+    assert "[REDACTED]" in sanitized
+
+
 def test_groups_equivalent_sanitized_logs_without_merging_context() -> None:
     log_processor = processor()
 

@@ -1,7 +1,28 @@
 import json
+import re
+import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
+
+
+EVENT_TYPE = "protected_workflow_evidence"
+SCHEMA_VERSION = "2.0"
+SCHEMA_MAJOR = 2
+SOURCE = "github_actions"
+STAGES = frozenset(
+    {
+        "BUILD",
+        "TESTING",
+        "QUALITY_GATE",
+        "DEPLOYMENT",
+        "CONTAINER",
+        "INFRASTRUCTURE",
+    }
+)
+_SAFE_CONTEXT = re.compile(r"[A-Za-z0-9._:-]{1,128}")
+_EXTERNAL_ID = re.compile(r"[1-9][0-9]*")
+_COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 
 
 class InvalidIntegrationMessage(ValueError):
@@ -20,31 +41,165 @@ def _object(value: Any, path: str) -> dict[str, Any]:
     return value
 
 
-def _text(container: dict[str, Any], path: str) -> str:
+def _value(container: dict[str, Any], path: str) -> Any:
     value: Any = container
     for part in path.split("."):
-        value = _object(value, path).get(part)
+        current = _object(value, path)
+        if part not in current:
+            raise InvalidIntegrationMessage("missing_required_field", (path,))
+        value = current[part]
+    return value
+
+
+def _text(container: dict[str, Any], path: str) -> str:
+    value = _value(container, path)
     if not isinstance(value, str) or not value.strip():
         raise InvalidIntegrationMessage("missing_required_field", (path,))
     return value.strip()
 
 
+def _nullable_text(container: dict[str, Any], path: str) -> str | None:
+    value = _value(container, path)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidIntegrationMessage("invalid_field_type", (path,))
+    return value.strip()
+
+
+def _optional_text(container: dict[str, Any], name: str, path: str) -> str | None:
+    value = container.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidIntegrationMessage("invalid_field_type", (path,))
+    return value.strip()
+
+
+def _integer(container: dict[str, Any], path: str, minimum: int) -> int:
+    value = _value(container, path)
+    if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+        raise InvalidIntegrationMessage("invalid_field_type", (path,))
+    return value
+
+
+def _optional_integer(container: dict[str, Any], name: str, path: str) -> int | None:
+    value = container.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise InvalidIntegrationMessage("invalid_field_type", (path,))
+    return value
+
+
+def _canonical_uuid(container: dict[str, Any], path: str) -> str:
+    value = _text(container, path)
+    try:
+        parsed = uuid.UUID(value)
+    except ValueError as error:
+        raise InvalidIntegrationMessage("invalid_identifier", (path,)) from error
+    if parsed.int == 0 or str(parsed) != value:
+        raise InvalidIntegrationMessage("invalid_identifier", (path,))
+    return value
+
+
+def _external_id(container: dict[str, Any], path: str) -> str:
+    value = _text(container, path)
+    if not _EXTERNAL_ID.fullmatch(value):
+        raise InvalidIntegrationMessage("invalid_identifier", (path,))
+    return value
+
+
+def _timestamp(container: dict[str, Any], path: str) -> str:
+    value = _text(container, path)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise InvalidIntegrationMessage("invalid_timestamp", (path,)) from error
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        raise InvalidIntegrationMessage("invalid_timestamp", (path,))
+    return value
+
+
+def _logical_id(name: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, name))
+
+
 @dataclass(frozen=True, slots=True)
-class ProtectedEvidenceMessage:
-    schema_version: str
-    message_id: str
-    occurred_at: str
-    correlation_id: str
-    source: str
-    repository: str
-    workflow: str
-    execution_id: str
-    external_run_id: str
+class CaptureContext:
+    tenant_id: str
+    github_account_id: str
+    github_installation_id: str
+    scope_revision: str
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineContext:
+    github_repository_id: str
+    github_workflow_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionContext:
+    github_run_id: str
+    run_attempt: int
+    status: str
+    conclusion: str
+
+
+@dataclass(frozen=True, slots=True)
+class CommitContext:
+    sha: str
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceContext:
     stage: str
     job: str | None
     summary: str
     excerpt: str
     sequence: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProtectedEvidenceMessage:
+    schema_version: str
+    event_type: str
+    message_id: str
+    occurred_at: str
+    source_updated_at: str
+    correlation_id: str
+    source: str
+    capture_context: CaptureContext
+    pipeline: PipelineContext
+    execution: ExecutionContext
+    commit: CommitContext
+    service: str | None
+    environment: str | None
+    evidence: EvidenceContext
+
+    @property
+    def pipeline_id(self) -> str:
+        return _logical_id(
+            "urn:pipesor:v1:pipeline:github:"
+            f"{self.pipeline.github_repository_id}:{self.pipeline.github_workflow_id}"
+        )
+
+    @property
+    def execution_id(self) -> str:
+        return _logical_id(
+            "urn:pipesor:v1:execution:github:"
+            f"{self.pipeline.github_repository_id}:{self.execution.github_run_id}:"
+            f"{self.execution.run_attempt}"
+        )
+
+    @property
+    def incident_id(self) -> str:
+        return _logical_id(f"urn:pipesor:v1:incident:{self.execution_id}")
+
+    @property
+    def evidence_id(self) -> str:
+        return _logical_id(f"urn:pipesor:v1:evidence:{self.message_id}")
 
     @classmethod
     def from_json(cls, body: bytes | str) -> "ProtectedEvidenceMessage":
@@ -54,43 +209,83 @@ class ProtectedEvidenceMessage:
         except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as error:
             raise InvalidIntegrationMessage("invalid_json") from error
 
-        root = _object(payload, "$.")
+        root = _object(payload, "$")
         schema_version = _text(root, "schema_version")
-        if schema_version.split(".", 1)[0] != "1":
-            raise InvalidIntegrationMessage("unsupported_schema_version", ("schema_version",))
-        if _text(root, "event_type") != "protected_workflow_evidence":
+        if schema_version != SCHEMA_VERSION:
+            raise InvalidIntegrationMessage(
+                "unsupported_schema_version", ("schema_version",)
+            )
+        event_type = _text(root, "event_type")
+        if event_type != EVENT_TYPE:
             raise InvalidIntegrationMessage("unsupported_event_type", ("event_type",))
 
-        occurred_at = _text(root, "occurred_at")
-        try:
-            parsed_time = datetime.fromisoformat(occurred_at.replace("Z", "+00:00"))
-            if parsed_time.tzinfo is None:
-                raise ValueError
-        except ValueError as error:
-            raise InvalidIntegrationMessage("invalid_timestamp", ("occurred_at",)) from error
+        source = _text(root, "source")
+        if source != SOURCE:
+            raise InvalidIntegrationMessage("unsupported_source", ("source",))
+        correlation_id = _text(root, "correlation_id")
+        if not _SAFE_CONTEXT.fullmatch(correlation_id):
+            raise InvalidIntegrationMessage("invalid_field_value", ("correlation_id",))
 
-        job = _object(root.get("evidence"), "evidence").get("job")
-        if job is not None and (not isinstance(job, str) or not job.strip()):
-            raise InvalidIntegrationMessage("invalid_field_type", ("evidence.job",))
-        sequence = _object(root.get("evidence"), "evidence").get("sequence")
-        if sequence is not None and (not isinstance(sequence, int) or isinstance(sequence, bool)):
-            raise InvalidIntegrationMessage("invalid_field_type", ("evidence.sequence",))
+        capture = _object(_value(root, "capture_context"), "capture_context")
+        scope_revision = _text(capture, "scope_revision")
+        if not _SAFE_CONTEXT.fullmatch(scope_revision):
+            raise InvalidIntegrationMessage(
+                "invalid_field_value", ("capture_context.scope_revision",)
+            )
+        pipeline = _object(_value(root, "pipeline"), "pipeline")
+        execution = _object(_value(root, "execution"), "execution")
+        commit = _object(_value(root, "commit"), "commit")
+        evidence = _object(_value(root, "evidence"), "evidence")
+
+        status = _text(execution, "status")
+        conclusion = _text(execution, "conclusion")
+        if status != "completed" or conclusion not in {"failure", "timed_out"}:
+            raise InvalidIntegrationMessage(
+                "unsupported_execution_outcome", ("execution",)
+            )
+        stage = _text(evidence, "stage")
+        if stage not in STAGES:
+            raise InvalidIntegrationMessage("unsupported_stage", ("evidence.stage",))
+        sha = _text(commit, "sha")
+        if not _COMMIT_SHA.fullmatch(sha):
+            raise InvalidIntegrationMessage("invalid_identifier", ("commit.sha",))
 
         return cls(
             schema_version=schema_version,
-            message_id=_text(root, "message_id"),
-            occurred_at=occurred_at,
-            correlation_id=_text(root, "correlation_id"),
-            source=_text(root, "source"),
-            repository=_text(root, "pipeline.repository"),
-            workflow=_text(root, "pipeline.workflow"),
-            execution_id=_text(root, "execution.execution_id"),
-            external_run_id=_text(root, "execution.external_run_id"),
-            stage=_text(root, "evidence.stage"),
-            job=job.strip() if job else None,
-            summary=_text(root, "evidence.summary"),
-            excerpt=_text(root, "evidence.excerpt"),
-            sequence=sequence,
+            event_type=event_type,
+            message_id=_canonical_uuid(root, "message_id"),
+            occurred_at=_timestamp(root, "occurred_at"),
+            source_updated_at=_timestamp(root, "source_updated_at"),
+            correlation_id=correlation_id,
+            source=source,
+            capture_context=CaptureContext(
+                tenant_id=_canonical_uuid(capture, "tenant_id"),
+                github_account_id=_external_id(capture, "github_account_id"),
+                github_installation_id=_external_id(
+                    capture, "github_installation_id"
+                ),
+                scope_revision=scope_revision,
+            ),
+            pipeline=PipelineContext(
+                github_repository_id=_external_id(pipeline, "github_repository_id"),
+                github_workflow_id=_external_id(pipeline, "github_workflow_id"),
+            ),
+            execution=ExecutionContext(
+                github_run_id=_external_id(execution, "github_run_id"),
+                run_attempt=_integer(execution, "run_attempt", 1),
+                status=status,
+                conclusion=conclusion,
+            ),
+            commit=CommitContext(sha),
+            service=_nullable_text(root, "service"),
+            environment=_nullable_text(root, "environment"),
+            evidence=EvidenceContext(
+                stage=stage,
+                job=_optional_text(evidence, "job", "evidence.job"),
+                summary=_text(evidence, "summary"),
+                excerpt=_text(evidence, "excerpt"),
+                sequence=_optional_integer(evidence, "sequence", "evidence.sequence"),
+            ),
         )
 
 
@@ -99,13 +294,24 @@ class CorrelationEvidence:
     contract_version: str
     message_id: str
     correlation_id: str
-    execution_id: str
     source: str
-    observed_at: str
+    occurred_at: str
+    source_updated_at: str
+    capture_context: CaptureContext
+    pipeline: PipelineContext
+    execution: ExecutionContext
+    commit: CommitContext
+    service: str | None
+    environment: str | None
+    pipeline_id: str
+    execution_id: str
+    incident_id: str
+    evidence_id: str
     stage: str
     job: str | None
+    sequence: int | None
+    sanitized_summary: str
     sanitized_content: str
     template: str
     traceparent: str | None = None
     tracestate: str | None = None
-

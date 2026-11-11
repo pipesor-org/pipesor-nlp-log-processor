@@ -11,7 +11,13 @@ from pipesor_nlp_log_processor.application.integration_ports import (
     PermanentDeliveryError,
     TransientDeliveryError,
 )
-from pipesor_nlp_log_processor.domain.integration import CorrelationEvidence
+from pipesor_nlp_log_processor.domain.integration import (
+    CaptureContext,
+    CommitContext,
+    CorrelationEvidence,
+    ExecutionContext,
+    PipelineContext,
+)
 from pipesor_nlp_log_processor.infrastructure.correlation_http import (
     CorrelationHttpDelivery,
     HttpResponse,
@@ -54,14 +60,26 @@ class StubTransport:
 
 def evidence() -> CorrelationEvidence:
     return CorrelationEvidence(
-        contract_version="1.0",
+        contract_version="2.0",
         message_id="msg-1",
         correlation_id="corr-1",
-        execution_id="exec-1",
         source="github_actions",
-        observed_at="2026-11-07T07:30:00Z",
+        occurred_at="2026-11-07T07:30:00Z",
+        source_updated_at="2026-11-07T07:31:00Z",
+        capture_context=CaptureContext("tenant-1", "1", "2", "scope-1"),
+        pipeline=PipelineContext("3", "4"),
+        execution=ExecutionContext("5", 1, "completed", "failure"),
+        commit=CommitContext("a" * 40),
+        service=None,
+        environment=None,
+        pipeline_id="pipeline-1",
+        execution_id="exec-1",
+        incident_id="incident-1",
+        evidence_id="evidence-1",
         stage="BUILD",
         job=None,
+        sequence=3,
+        sanitized_summary="safe summary",
         sanitized_content="safe content",
         template="safe content",
     )
@@ -93,8 +111,13 @@ def test_delivers_contract_with_authentication_and_idempotency(status: str) -> N
     assert result is DeliveryStatus(status)
     url, body, headers, timeout = transport.requests[0]
     assert url == "https://correlation.internal/internal/v1/processed-evidence"
-    assert json.loads(body)["sanitized_content"] == "safe content"
-    assert "job" not in json.loads(body)
+    payload = json.loads(body)
+    assert payload["contract_version"] == "2.0"
+    assert payload["sanitized_content"] == "safe content"
+    assert payload["capture_context"]["tenant_id"] == "tenant-1"
+    assert payload["execution"]["run_attempt"] == 1
+    assert payload["incident_id"] == "incident-1"
+    assert "job" not in payload
     assert headers["Authorization"] == "Bearer test-token"
     assert headers["Idempotency-Key"] == "msg-1"
     assert headers["X-Correlation-ID"] == "corr-1"
