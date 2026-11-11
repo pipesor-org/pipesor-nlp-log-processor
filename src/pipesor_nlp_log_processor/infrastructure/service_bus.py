@@ -17,7 +17,7 @@ class ServiceBusMessageError(ValueError):
     """Raised when broker metadata cannot satisfy the application contract."""
 
 
-def _application_property(message: Any, name: str) -> str | None:
+def _application_property(message: Any, name: str) -> Any:
     properties = message.application_properties or {}
     value = properties.get(name)
     if value is None:
@@ -27,17 +27,27 @@ def _application_property(message: Any, name: str) -> str | None:
             value = value.decode()
         except UnicodeDecodeError:
             return None
+    return value
+
+
+def _string_application_property(message: Any, name: str) -> str | None:
+    value = _application_property(message, name)
     return value if isinstance(value, str) else None
 
 
+def _integer_application_property(message: Any, name: str) -> int | None:
+    value = _application_property(message, name)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def _safe_trace_context(message: Any) -> tuple[str | None, str | None]:
-    traceparent = _application_property(message, "traceparent")
+    traceparent = _string_application_property(message, "traceparent")
     if not traceparent or not _TRACEPARENT.fullmatch(traceparent):
         return None, None
     parts = traceparent.split("-")
     if set(parts[1]) == {"0"} or set(parts[2]) == {"0"}:
         return None, None
-    tracestate = _application_property(message, "tracestate")
+    tracestate = _string_application_property(message, "tracestate")
     if tracestate is not None and len(tracestate) > 512:
         tracestate = None
     return traceparent, tracestate
@@ -103,8 +113,8 @@ class AzureServiceBusAdapter:
                 max_lock_renewal_duration=self._max_lock_renewal_seconds,
             )
         traceparent, tracestate = _safe_trace_context(raw)
-        broker_event_type = _application_property(raw, "event_type")
-        broker_schema_version = _application_property(raw, "schema_version")
+        broker_event_type = _string_application_property(raw, "eventType")
+        broker_schema_major = _integer_application_property(raw, "schemaMajor")
         contract_error = None
         if raw.message_id is None or raw.correlation_id is None:
             contract_error = "missing_broker_identifier"
@@ -115,7 +125,7 @@ class AzureServiceBusAdapter:
             contract_error = "unsupported_message_body"
         if (
             contract_error is None
-            and (broker_event_type is None or broker_schema_version is None)
+            and (broker_event_type is None or broker_schema_major is None)
         ):
             contract_error = "missing_broker_application_property"
         return ReceivedMessage(
@@ -125,7 +135,7 @@ class AzureServiceBusAdapter:
             traceparent=traceparent,
             tracestate=tracestate,
             broker_event_type=broker_event_type,
-            broker_schema_version=broker_schema_version,
+            broker_schema_major=broker_schema_major,
             contract_error=contract_error,
             settlement_token=raw,
         )

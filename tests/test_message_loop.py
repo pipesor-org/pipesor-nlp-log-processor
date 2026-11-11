@@ -9,6 +9,8 @@ from pipesor_nlp_log_processor import (
     ProcessLog,
     ReceivedMessage,
 )
+
+MESSAGE_ID = "cf6b69cf-a28d-49f3-bceb-000000000001"
 from pipesor_nlp_log_processor.application.integration_ports import (
     AuthorizationDeliveryError,
     DeliveryStatus,
@@ -30,21 +32,42 @@ from pipesor_nlp_log_processor.infrastructure.simulated import (
 
 def message(body: bytes | None = None) -> ReceivedMessage:
     payload = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "event_type": "protected_workflow_evidence",
-        "message_id": "msg-1",
+        "message_id": MESSAGE_ID,
         "occurred_at": "2026-11-07T07:30:00Z",
+        "source_updated_at": "2026-11-07T07:31:00Z",
         "correlation_id": "corr-1",
         "source": "github_actions",
-        "pipeline": {"repository": "pipesor-org/example", "workflow": "ci"},
-        "execution": {"execution_id": "exec-1", "external_run_id": "42"},
+        "capture_context": {
+            "tenant_id": "d91d1df6-ae89-40c2-99b5-20edfb3e9ed0",
+            "github_account_id": "1",
+            "github_installation_id": "2",
+            "scope_revision": "scope-1",
+        },
+        "pipeline": {"github_repository_id": "3", "github_workflow_id": "4"},
+        "execution": {
+            "github_run_id": "42",
+            "run_attempt": 1,
+            "status": "completed",
+            "conclusion": "failure",
+        },
+        "commit": {"sha": "a" * 40},
+        "service": None,
+        "environment": None,
         "evidence": {
             "stage": "BUILD",
             "summary": "Build failed",
             "excerpt": "status=500",
         },
     }
-    return ReceivedMessage(body or json.dumps(payload).encode(), "msg-1", "corr-1")
+    return ReceivedMessage(
+        body or json.dumps(payload).encode(),
+        MESSAGE_ID,
+        "corr-1",
+        broker_event_type="protected_workflow_evidence",
+        broker_schema_major=2,
+    )
 
 
 class FailingDelivery:
@@ -83,7 +106,7 @@ def test_completes_only_after_successful_delivery() -> None:
     assert loop.process_next() is ProcessingOutcome.COMPLETED
     assert settlement.completed == [message()]
     assert not settlement.abandoned
-    assert observer.records == [("completed", "msg-1", "corr-1", None, 0.0)]
+    assert observer.records == [("completed", MESSAGE_ID, "corr-1", None, 0.0)]
 
 
 def test_records_duplicate_as_distinct_successful_outcome() -> None:
@@ -93,7 +116,7 @@ def test_records_duplicate_as_distinct_successful_outcome() -> None:
 
     assert loop.process_next() is ProcessingOutcome.DUPLICATE
     assert settlement.completed == [message()]
-    assert observer.records == [("duplicate", "msg-1", "corr-1", None, 0.0)]
+    assert observer.records == [("duplicate", MESSAGE_ID, "corr-1", None, 0.0)]
 
 
 def test_dead_letters_invalid_contract_with_safe_reason() -> None:
@@ -103,7 +126,7 @@ def test_dead_letters_invalid_contract_with_safe_reason() -> None:
     assert settlement.dead_lettered[0][1:] == ("invalid_json", ())
     assert observer.records[0] == (
         "dead_lettered",
-        "msg-1",
+        MESSAGE_ID,
         "corr-1",
         "invalid_json",
         0.0,
@@ -141,7 +164,7 @@ def test_abandons_current_message_and_pauses_on_authorization_failure() -> None:
     assert not settlement.dead_lettered
     assert observer.records[0] == (
         "paused",
-        "msg-1",
+        MESSAGE_ID,
         "corr-1",
         "correlation_unauthorized",
         0.0,

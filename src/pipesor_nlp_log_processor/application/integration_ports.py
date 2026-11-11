@@ -13,7 +13,7 @@ class ReceivedMessage:
     traceparent: str | None = None
     tracestate: str | None = None
     broker_event_type: str | None = None
-    broker_schema_version: str | None = None
+    broker_schema_major: int | None = None
     contract_error: str | None = None
     settlement_token: object | None = field(default=None, compare=False, repr=False)
 

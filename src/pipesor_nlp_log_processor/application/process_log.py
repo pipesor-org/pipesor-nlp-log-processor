@@ -11,8 +11,11 @@ class ProcessLog:
         self._parser = parser
         self._sanitizer = sanitizer
 
+    def sanitize(self, content: str) -> str:
+        return self._sanitizer.sanitize(content)
+
     def execute(self, envelope: LogEnvelope) -> ProcessedLog:
-        sanitized_content = self._sanitizer.sanitize(envelope.content)
+        sanitized_content = self.sanitize(envelope.content)
         parsed = self._parser.parse(sanitized_content)
         return ProcessedLog(
             sanitized_content=sanitized_content,

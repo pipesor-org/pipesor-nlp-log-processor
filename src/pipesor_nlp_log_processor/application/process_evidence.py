@@ -1,6 +1,12 @@
 from .integration_ports import DeliveryStatus, EvidenceDelivery, ReceivedMessage
 from .process_log import ProcessLog
-from ..domain.integration import CorrelationEvidence, InvalidIntegrationMessage, ProtectedEvidenceMessage
+from ..domain.integration import (
+    EVENT_TYPE,
+    SCHEMA_MAJOR,
+    CorrelationEvidence,
+    InvalidIntegrationMessage,
+    ProtectedEvidenceMessage,
+)
 from ..domain.models import LogEnvelope
 
 
@@ -16,10 +22,10 @@ class ProcessEvidence:
         property_mismatches = tuple(
             path
             for path, broker_value, body_value in (
-                ("event_type", received.broker_event_type, "protected_workflow_evidence"),
-                ("schema_version", received.broker_schema_version, message.schema_version),
+                ("eventType", received.broker_event_type, EVENT_TYPE),
+                ("schemaMajor", received.broker_schema_major, SCHEMA_MAJOR),
             )
-            if broker_value is not None and broker_value != body_value
+            if broker_value != body_value
         )
         if property_mismatches:
             raise InvalidIntegrationMessage(
@@ -38,7 +44,7 @@ class ProcessEvidence:
 
         processed = self._processor.execute(
             LogEnvelope(
-                content=message.excerpt,
+                content=message.evidence.excerpt,
                 correlation_id=message.correlation_id,
                 execution_id=message.execution_id,
                 source=message.source,
@@ -46,14 +52,26 @@ class ProcessEvidence:
         )
         return self._delivery.deliver(
             CorrelationEvidence(
-                contract_version="1.0",
+                contract_version="2.0",
                 message_id=message.message_id,
                 correlation_id=message.correlation_id,
-                execution_id=message.execution_id,
                 source=message.source,
-                observed_at=message.occurred_at,
-                stage=message.stage,
-                job=message.job,
+                occurred_at=message.occurred_at,
+                source_updated_at=message.source_updated_at,
+                capture_context=message.capture_context,
+                pipeline=message.pipeline,
+                execution=message.execution,
+                commit=message.commit,
+                service=message.service,
+                environment=message.environment,
+                pipeline_id=message.pipeline_id,
+                execution_id=message.execution_id,
+                incident_id=message.incident_id,
+                evidence_id=message.evidence_id,
+                stage=message.evidence.stage,
+                job=message.evidence.job,
+                sequence=message.evidence.sequence,
+                sanitized_summary=self._processor.sanitize(message.evidence.summary),
                 sanitized_content=processed.sanitized_content,
                 template=processed.template,
                 traceparent=received.traceparent,
