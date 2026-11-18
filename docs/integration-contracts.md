@@ -207,6 +207,8 @@ business `correlation_id`; trace identifiers never replace authorization checks.
 | Caller payload violates the accepted contract | `400` | Stable code and field paths only. |
 | Caller is unauthenticated | `401` | No contract or evidence detail; stop consumption after abandoning the current message. |
 | Caller lacks service permission | `403` | No contract or evidence detail; stop consumption after abandoning the current message. |
+| An individual evidence resource is denied | `422` | `RESOURCE_DENIED` produces `correlation_resource_denied`. |
+| The new cumulative revision exceeds capacity | `413` | `CAPACITY_EXCEEDED` produces `correlation_capacity_exceeded`. |
 | Temporary inability to process | `503` | Stable retryable code; optional bounded `Retry-After`. |
 
 Timeouts, connection failures, `429` and `5xx` are transient. Other `4xx` contract
@@ -217,6 +219,17 @@ must cover token acquisition, HTTP attempts and retry waits; a bounded numeric
 timeout/retry budgets remain deployment inputs under PD-035. `401` and `403` are
 service configuration/authorization failures, not evidence failures: the current
 message is abandoned and consumption stops to prevent valid evidence entering DLQ.
+
+The two locally approved reasons use the existing dead-letter path. NLP
+recognizes only the exact HTTP status and code pair in
+`application/problem+json` with a matching integer `status`. The client inspects
+at most 4 KiB of problem content. The `413` for
+`REQUEST_TOO_LARGE` and absent, invalid, oversized or unrecognized problem
+bodies keep `correlation_contract_rejected`. Error details and arbitrary
+remote codes are excluded from DLQ metadata and telemetry.
+
+The queue operator, authorized inspection and manual replay procedure, and
+retention and disposal settings remain activation decisions under PD-033.
 
 Correlation must durably enforce `message_id` idempotency, including when its
 successful response is lost. Reusing one ID with different content is a conflict,

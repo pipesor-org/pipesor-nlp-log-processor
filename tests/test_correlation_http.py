@@ -1,4 +1,7 @@
 import json
+import io
+import urllib.error
+from email.message import Message
 from collections import deque
 from collections.abc import Iterable
 from typing import Mapping
@@ -23,6 +26,7 @@ from pipesor_nlp_log_processor.infrastructure.correlation_http import (
     HttpResponse,
     RetryPolicy,
     TransportFailure,
+    UrlLibHttpTransport,
 )
 
 
@@ -176,11 +180,18 @@ def test_exhausted_network_failures_are_safe_and_transient() -> None:
     ("status", "body"),
     [
         (400, b"sensitive rejection"),
-        (422, b'{"status":422,"code":"RESOURCE_DENIED","detail":"sensitive rejection"}'),
-        (413, b'{"status":413,"code":"CAPACITY_EXCEEDED","detail":"sensitive rejection"}'),
         (413, b'{"status":413,"code":"REQUEST_TOO_LARGE","detail":"sensitive rejection"}'),
         (422, b"sensitive malformed response"),
         (422, b'{"code":"sensitive_unknown_reason"}'),
+        (422, b'{"status":413,"code":"RESOURCE_DENIED"}'),
+        (413, b'{"status":413,"code":"RESOURCE_DENIED"}'),
+        (422, b'{"status":422.0,"code":"RESOURCE_DENIED"}'),
+        (422, b'{"status":true,"code":"RESOURCE_DENIED"}'),
+        (422, b'{"status":422,"code":"RESOURCE_DENIED","code":"RESOURCE_DENIED"}'),
+        (422, b'{"status":422,"code":["RESOURCE_DENIED"]}'),
+        (422, b'{"status":422,"code":"RESOURCE_DENIED","detail":NaN}'),
+        (422, b'{"status":422,"code":"RESOURCE_DENIED"}' + b" " * 4096),
+        (422, b'{"status":422,"code":"RESOURCE_DENIED","detail":"\xff"}'),
     ],
 )
 def test_does_not_retry_permanent_contract_rejection(status: int, body: bytes) -> None:
@@ -197,6 +208,82 @@ def test_does_not_retry_permanent_contract_rejection(status: int, body: bytes) -
     assert caught.value.__cause__ is None
     assert len(transport.requests) == 1
     assert sleeps == []
+
+
+@pytest.mark.parametrize(
+    ("status", "remote_code", "reason"),
+    [(422, "RESOURCE_DENIED", "correlation_resource_denied"),
+     (413, "CAPACITY_EXCEEDED", "correlation_capacity_exceeded")],
+)
+def test_preserves_only_approved_permanent_reasons(status, remote_code, reason) -> None:
+    transport = StubTransport([HttpResponse(status, json.dumps({
+        "status": status, "code": remote_code, "detail": "sensitive value"
+    }).encode(), {"content-type": "Application/Problem+JSON; charset=utf-8"})])
+    sleeps: list[float] = []
+    with pytest.raises(PermanentDeliveryError) as caught:
+        delivery(transport, sleeps=sleeps).deliver(evidence())
+    assert caught.value.code == reason
+    assert str(caught.value) == reason
+    assert caught.value.__cause__ is None
+    assert len(transport.requests) == 1
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("headers", [{}, {"Content-Type": "application/json"},
+    {"Content-Type": "application/problem+json", "content-type": "application/problem+json"}])
+def test_requires_unambiguous_problem_media_type(headers) -> None:
+    transport = StubTransport([HttpResponse(422, b'{"status":422,"code":"RESOURCE_DENIED"}', headers)])
+    with pytest.raises(PermanentDeliveryError, match="^correlation_contract_rejected$"):
+        delivery(transport).deliver(evidence())
+
+
+@pytest.mark.parametrize("unreadable", [False, True])
+def test_bounds_problem_read_and_preserves_status_if_body_fails(monkeypatch, unreadable) -> None:
+    class ResponseBody(io.BytesIO):
+        reads = []
+
+        def read(self, size=-1):
+            self.reads.append(size)
+            if unreadable:
+                raise TimeoutError("sensitive value")
+            return super().read(size)
+
+    body = ResponseBody(b"x" * 10_000)
+    error = urllib.error.HTTPError("https://correlation.internal", 422, "rejected",
+                                  {"Content-Type": "application/problem+json"}, body)
+
+    def reject(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr("urllib.request.urlopen", reject)
+    response = UrlLibHttpTransport().post("https://correlation.internal", b"{}", {}, 1)
+    assert response.status_code == 422
+    assert body.reads == [4097]
+    assert len(response.body) == (0 if unreadable else 4097)
+    assert body.closed
+    with pytest.raises(PermanentDeliveryError, match="^correlation_contract_rejected$"):
+        CorrelationHttpDelivery._interpret(response, "msg-1")
+
+
+@pytest.mark.parametrize("fault", ["duplicate_type", "truncated", "duplicate_length"])
+def test_real_transport_discards_ambiguous_headers_or_truncated_problem(monkeypatch, fault) -> None:
+    raw = b'{"status":422,"code":"RESOURCE_DENIED"}'
+    headers = Message()
+    headers["Content-Type"] = "application/problem+json"
+    headers["Content-Length"] = str(len(raw) + (1 if fault == "truncated" else 0))
+    if fault == "duplicate_type":
+        headers["Content-Type"] = "application/problem+json"
+    if fault == "duplicate_length":
+        headers["Content-Length"] = str(len(raw))
+    error = urllib.error.HTTPError("https://correlation.internal", 422, "rejected", headers, io.BytesIO(raw))
+
+    def reject(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr("urllib.request.urlopen", reject)
+    response = UrlLibHttpTransport().post("https://correlation.internal", b"{}", {}, 1)
+    with pytest.raises(PermanentDeliveryError, match="^correlation_contract_rejected$"):
+        CorrelationHttpDelivery._interpret(response, "msg-1")
 
 
 @pytest.mark.parametrize(

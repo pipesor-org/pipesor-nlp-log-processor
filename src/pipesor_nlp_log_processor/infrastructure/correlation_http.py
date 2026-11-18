@@ -3,6 +3,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from http.client import HTTPException
 from typing import Callable, Mapping, Protocol
 
 from ..application.integration_ports import (
@@ -12,6 +13,46 @@ from ..application.integration_ports import (
     TransientDeliveryError,
 )
 from ..domain.integration import CorrelationEvidence
+
+_MAX_PROBLEM_BYTES = 4096
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise ValueError("Duplicate problem field")
+    return result
+
+
+def _invalid_constant(value: str) -> None:
+    raise ValueError("Invalid JSON constant")
+
+
+def _rejection_reason(response: "HttpResponse") -> str:
+    fallback = "correlation_contract_rejected"
+    media_types = [
+        value.split(";", 1)[0].strip().lower()
+        for name, value in response.headers.items()
+        if name.lower() == "content-type"
+    ]
+    if media_types != ["application/problem+json"] or len(response.body) > _MAX_PROBLEM_BYTES:
+        return fallback
+    try:
+        problem = json.loads(
+            response.body.decode("utf-8"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_invalid_constant,
+        )
+        if not isinstance(problem, dict) or type(problem.get("status")) is not int:
+            return fallback
+        if problem["status"] != response.status_code:
+            return fallback
+        return {
+            (422, "RESOURCE_DENIED"): "correlation_resource_denied",
+            (413, "CAPACITY_EXCEEDED"): "correlation_capacity_exceeded",
+        }.get((response.status_code, problem.get("code")), fallback)
+    except (ValueError, TypeError, RecursionError):
+        return fallback
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,8 +120,26 @@ class UrlLibHttpTransport:
                     response.status, response.read(), dict(response.headers.items())
                 )
         except urllib.error.HTTPError as error:
-            headers = dict(error.headers.items()) if error.headers else {}
-            return HttpResponse(error.code, error.read(), headers)
+            with error:
+                entries = list(error.headers.items()) if error.headers else []
+                headers = dict(entries)
+                content_types = [
+                    value for name, value in entries if name.lower() == "content-type"
+                ]
+                if len(content_types) != 1:
+                    headers = {
+                        name: value for name, value in entries if name.lower() != "content-type"
+                    }
+                rejection = b""
+                if error.code in (413, 422):
+                    try:
+                        rejection = error.read(_MAX_PROBLEM_BYTES + 1)
+                        lengths = [value for name, value in entries if name.lower() == "content-length"]
+                        if lengths and (len(lengths) != 1 or int(lengths[0]) != len(rejection)):
+                            rejection = b""
+                    except (HTTPException, OSError, ValueError):
+                        rejection = b""
+                return HttpResponse(error.code, rejection, headers)
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             raise TransportFailure("correlation_transport_failure") from error
 
@@ -257,6 +316,6 @@ class CorrelationHttpDelivery:
         if response.status_code == 403:
             raise AuthorizationDeliveryError("correlation_unauthorized")
         if 400 <= response.status_code < 500:
-            raise PermanentDeliveryError("correlation_contract_rejected")
+            raise PermanentDeliveryError(_rejection_reason(response))
         raise TransientDeliveryError("invalid_correlation_response")
 
