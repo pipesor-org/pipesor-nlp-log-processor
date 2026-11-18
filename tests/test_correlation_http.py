@@ -172,13 +172,31 @@ def test_exhausted_network_failures_are_safe_and_transient() -> None:
     assert "secret" not in str(caught.value)
 
 
-def test_does_not_retry_permanent_contract_rejection() -> None:
-    transport = StubTransport([HttpResponse(400, b"sensitive rejection")])
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (400, b"sensitive rejection"),
+        (422, b'{"status":422,"code":"RESOURCE_DENIED","detail":"sensitive rejection"}'),
+        (413, b'{"status":413,"code":"CAPACITY_EXCEEDED","detail":"sensitive rejection"}'),
+        (413, b'{"status":413,"code":"REQUEST_TOO_LARGE","detail":"sensitive rejection"}'),
+        (422, b"sensitive malformed response"),
+        (422, b'{"code":"sensitive_unknown_reason"}'),
+    ],
+)
+def test_does_not_retry_permanent_contract_rejection(status: int, body: bytes) -> None:
+    transport = StubTransport(
+        [HttpResponse(status, body, {"Content-Type": "application/problem+json"})]
+    )
+    sleeps: list[float] = []
 
-    with pytest.raises(PermanentDeliveryError, match="correlation_contract_rejected"):
-        delivery(transport).deliver(evidence())
+    with pytest.raises(PermanentDeliveryError, match="correlation_contract_rejected") as caught:
+        delivery(transport, sleeps=sleeps).deliver(evidence())
 
+    assert caught.value.code == "correlation_contract_rejected"
+    assert str(caught.value) == "correlation_contract_rejected"
+    assert caught.value.__cause__ is None
     assert len(transport.requests) == 1
+    assert sleeps == []
 
 
 @pytest.mark.parametrize(

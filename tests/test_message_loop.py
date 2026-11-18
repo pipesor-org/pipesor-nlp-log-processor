@@ -145,11 +145,13 @@ def test_abandons_transient_delivery_failure() -> None:
 
 def test_dead_letters_permanent_delivery_rejection() -> None:
     loop, settlement, _ = loop_for(
-        message(), FailingDelivery(PermanentDeliveryError("contract_rejected"))
+        message(), FailingDelivery(PermanentDeliveryError("correlation_contract_rejected"))
     )
 
     assert loop.process_next() is ProcessingOutcome.DEAD_LETTERED
-    assert settlement.dead_lettered[0][1] == "contract_rejected"
+    assert settlement.dead_lettered[0][1:] == ("correlation_contract_rejected", ())
+    assert not settlement.completed
+    assert not settlement.abandoned
 
 
 def test_abandons_current_message_and_pauses_on_authorization_failure() -> None:
