@@ -28,6 +28,11 @@ from pipesor_nlp_log_processor.infrastructure.simulated import (
     RecordingObserver,
     RecordingSettlement,
 )
+from pipesor_nlp_log_processor.infrastructure.correlation_http import (
+    CorrelationHttpDelivery,
+    HttpResponse,
+    RetryPolicy,
+)
 
 
 def message(body: bytes | None = None) -> ReceivedMessage:
@@ -145,11 +150,40 @@ def test_abandons_transient_delivery_failure() -> None:
 
 def test_dead_letters_permanent_delivery_rejection() -> None:
     loop, settlement, _ = loop_for(
-        message(), FailingDelivery(PermanentDeliveryError("contract_rejected"))
+        message(), FailingDelivery(PermanentDeliveryError("correlation_contract_rejected"))
     )
 
     assert loop.process_next() is ProcessingOutcome.DEAD_LETTERED
-    assert settlement.dead_lettered[0][1] == "contract_rejected"
+    assert settlement.dead_lettered[0][1:] == ("correlation_contract_rejected", ())
+    assert not settlement.completed
+    assert not settlement.abandoned
+
+
+@pytest.mark.parametrize(
+    ("status", "code", "reason"),
+    [(422, "RESOURCE_DENIED", "correlation_resource_denied"),
+     (413, "CAPACITY_EXCEEDED", "correlation_capacity_exceeded"),
+     (413, "REQUEST_TOO_LARGE", "correlation_contract_rejected")],
+)
+def test_actual_http_rejections_reach_safe_dlq_reason_and_telemetry(status, code, reason) -> None:
+    class Peer:
+        def get_token(self):
+            return "synthetic-token"
+
+        def post(self, *args):
+            return HttpResponse(status, json.dumps({
+                "status": status, "code": code, "detail": "sensitive value"
+            }).encode(), {"Content-Type": "application/problem+json"})
+
+    peer = Peer()
+    adapter = CorrelationHttpDelivery("https://correlation.internal", 1,
+                                      RetryPolicy(1, 0, 1), peer, peer)
+    loop, settlement, observer = loop_for(message(), adapter)
+    assert loop.process_next() is ProcessingOutcome.DEAD_LETTERED
+    assert settlement.dead_lettered[0][1:] == (reason, ())
+    assert observer.records[0][3] == reason
+    assert not settlement.completed
+    assert not settlement.abandoned
 
 
 def test_abandons_current_message_and_pauses_on_authorization_failure() -> None:
