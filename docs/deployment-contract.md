@@ -113,3 +113,11 @@ Before IaC consumes this contract, provide:
 4. The applicable independent environment promotion approvals and separate authorization for any infrastructure action. Contract approval alone does not authorize deployment.
 
 **Approval evidence today: none for this service's delivery contract.** ADRs retain their recorded Accepted status; missing individual acceptance records remain PD-014. This document is sufficient to expose gaps while repository initialization proceeds; it is insufficient to claim deployability.
+
+### Protected evidence 2.1
+
+The consumer validates the job against the aggregate locator, sanitizes the
+protected excerpt and forwards the original locator in the 2.1 Correlation
+request. The source digest describes the original archive line. The broker
+subscription continues to receive major version 2. Deploy the Correlation
+decoder before this consumer and keep the 2.0 path for retained deliveries.

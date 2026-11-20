@@ -279,6 +279,8 @@ class CorrelationHttpDelivery:
             "sanitized_content": evidence.sanitized_content,
             "template": evidence.template,
         }
+        if evidence.source_locator is not None:
+            payload["source_locator"] = evidence.source_locator
         if evidence.job is not None:
             payload["job"] = evidence.job
         return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()

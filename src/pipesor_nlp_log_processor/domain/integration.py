@@ -159,6 +159,7 @@ class EvidenceContext:
     summary: str
     excerpt: str
     sequence: int | None
+    source_locator: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,7 +212,7 @@ class ProtectedEvidenceMessage:
 
         root = _object(payload, "$")
         schema_version = _text(root, "schema_version")
-        if schema_version != SCHEMA_VERSION:
+        if schema_version not in {SCHEMA_VERSION, "2.1"}:
             raise InvalidIntegrationMessage(
                 "unsupported_schema_version", ("schema_version",)
             )
@@ -236,6 +237,15 @@ class ProtectedEvidenceMessage:
         execution = _object(_value(root, "execution"), "execution")
         commit = _object(_value(root, "commit"), "commit")
         evidence = _object(_value(root, "evidence"), "evidence")
+
+        locator = evidence.get("source_locator")
+        job = _optional_text(evidence, "job", "evidence.job")
+        if schema_version == "2.1":
+            if (not isinstance(locator, str) or not job or not _EXTERNAL_ID.fullmatch(job)
+                    or not re.fullmatch(rf"v2:job:{job}:member:[0-9]{{1,9}}_verify\.txt:lines:([1-9][0-9]{{0,8}})-\1:sha256:[0-9a-f]{{64}}", locator)):
+                raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",))
+        elif "source_locator" in evidence:
+            raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",))
 
         status = _text(execution, "status")
         conclusion = _text(execution, "conclusion")
@@ -281,7 +291,8 @@ class ProtectedEvidenceMessage:
             environment=_nullable_text(root, "environment"),
             evidence=EvidenceContext(
                 stage=stage,
-                job=_optional_text(evidence, "job", "evidence.job"),
+                job=job,
+                source_locator=locator,
                 summary=_text(evidence, "summary"),
                 excerpt=_text(evidence, "excerpt"),
                 sequence=_optional_integer(evidence, "sequence", "evidence.sequence"),
@@ -313,5 +324,6 @@ class CorrelationEvidence:
     sanitized_summary: str
     sanitized_content: str
     template: str
+    source_locator: str | None = None
     traceparent: str | None = None
     tracestate: str | None = None

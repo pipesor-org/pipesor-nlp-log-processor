@@ -290,3 +290,16 @@ def test_rejects_shutdown_budget_that_exceeds_termination_grace() -> None:
                 "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
             }
         )
+
+
+def test_aggregate_locator_survives_sanitization_and_rejects_crossed_job() -> None:
+    value = payload(schema_version="2.1")
+    locator = "v2:job:701:member:0_verify.txt:lines:2-2:sha256:" + "a" * 64
+    value["evidence"].update(job="701", source_locator=locator)
+    delivery = RecordingEvidenceDelivery()
+    handler(delivery).execute(received(value))
+    assert delivery.deliveries[0].source_locator == locator
+    assert delivery.deliveries[0].contract_version == "2.1"
+    value["evidence"]["job"] = "702"
+    with pytest.raises(InvalidIntegrationMessage):
+        handler(delivery).execute(received(value))
