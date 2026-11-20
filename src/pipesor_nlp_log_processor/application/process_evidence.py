@@ -52,7 +52,8 @@ class ProcessEvidence:
         )
         return self._delivery.deliver(
             CorrelationEvidence(
-                contract_version="2.0",
+                contract_version=message.schema_version,
+                source_locator=message.evidence.source_locator,
                 message_id=message.message_id,
                 correlation_id=message.correlation_id,
                 source=message.source,
