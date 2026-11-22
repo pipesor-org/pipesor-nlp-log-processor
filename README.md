@@ -48,7 +48,7 @@ After supplying the reviewed runtime variables, start the worker with:
 ```
 
 Required variables are `PIPESOR_ENVIRONMENT`, `PIPESOR_TENANT_ID`,
-`PIPESOR_WORKLOAD=nlp`, `SERVER_ADDRESS`, `SERVER_PORT`,
+`PIPESOR_WORKLOAD_ID=nlp`, `SERVER_ADDRESS`, `SERVER_PORT`,
 `PIPESOR_SERVICE_BUS_CONNECTION_STRING` (local) or
 `PIPESOR_SERVICE_BUS_NAMESPACE` (Azure),
 `PIPESOR_SERVICE_BUS_TOPIC=workflow-evidence`, `PIPESOR_SERVICE_BUS_SUBSCRIPTION=nlp`,
