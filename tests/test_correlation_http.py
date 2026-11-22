@@ -180,6 +180,7 @@ def test_exhausted_network_failures_are_safe_and_transient() -> None:
     ("status", "body"),
     [
         (400, b"sensitive rejection"),
+        (409, b"sensitive conflict"),
         (413, b'{"status":413,"code":"REQUEST_TOO_LARGE","detail":"sensitive rejection"}'),
         (422, b"sensitive malformed response"),
         (422, b'{"code":"sensitive_unknown_reason"}'),

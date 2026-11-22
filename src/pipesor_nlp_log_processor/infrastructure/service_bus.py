@@ -82,12 +82,17 @@ class AzureServiceBusAdapter:
         settings: RuntimeSettings,
         credential: Any | None = None,
     ) -> "AzureServiceBusAdapter":
-        resolved_credential = credential or DefaultAzureCredential()
-        client = ServiceBusClient(
-            fully_qualified_namespace=settings.service_bus_namespace,
-            credential=resolved_credential,
-            logging_enable=False,
-        )
+        if settings.service_bus_connection_string is not None:
+            client = ServiceBusClient.from_connection_string(
+                settings.service_bus_connection_string, logging_enable=False
+            )
+        else:
+            resolved_credential = credential or DefaultAzureCredential()
+            client = ServiceBusClient(
+                fully_qualified_namespace=settings.service_bus_namespace,
+                credential=resolved_credential,
+                logging_enable=False,
+            )
         receiver = client.get_subscription_receiver(
             topic_name=settings.service_bus_topic,
             subscription_name=settings.service_bus_subscription,

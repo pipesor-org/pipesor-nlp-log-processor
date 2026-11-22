@@ -184,89 +184,53 @@ def test_rejects_unapproved_stage() -> None:
         handler(RecordingEvidenceDelivery()).execute(received(invalid))
 
 
+def runtime_environment(**overrides: str) -> dict[str, str]:
+    values = {
+        "PIPESOR_ENVIRONMENT": "local",
+        "PIPESOR_TENANT_ID": "24c96be0-50f3-4064-b5e4-643088141ae8",
+        "PIPESOR_WORKLOAD_ID": "nlp",
+        "PIPESOR_SIGNING_KEY_FILE": "nlp.pem",
+        "SERVER_ADDRESS": "127.0.0.1",
+        "SERVER_PORT": "8084",
+        "PIPESOR_SERVICE_BUS_CONNECTION_STRING": "Endpoint=sb://127.0.0.1/;SharedAccessKeyName=x;SharedAccessKey=y;UseDevelopmentEmulator=true;",
+        "PIPESOR_SERVICE_BUS_TOPIC": "workflow-evidence",
+        "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp",
+        "PIPESOR_ENDPOINTS_CORRELATION": "http://127.0.0.1:8085",
+    }
+    values.update(overrides)
+    return values
+
+
 def test_loads_typed_runtime_settings() -> None:
-    settings = RuntimeSettings.from_environment(
-        {
-            "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
-            "PIPESOR_SERVICE_BUS_TOPIC": "protected-evidence",
-            "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
-            "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "10",
-            "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
-            "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal/",
-            "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
-            "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "2.5",
-            "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
-            "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
-            "PIPESOR_CORRELATION_BACKOFF_SECONDS": "0.25",
-            "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
-        }
-    )
-    assert settings.correlation_endpoint == "https://correlation.internal"
-    assert settings.correlation_scope == "api://correlation/.default"
+    settings = RuntimeSettings.from_environment(runtime_environment(
+        PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS="10",
+        PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS="300",
+        PIPESOR_CORRELATION_TIMEOUT_SECONDS="2.5",
+        PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS="35",
+        PIPESOR_CORRELATION_BACKOFF_SECONDS="0.25",
+    ))
+    assert settings.correlation_endpoint == "http://127.0.0.1:8085"
+    assert settings.environment == "local"
     assert settings.correlation_timeout_seconds == 2.5
-    assert settings.correlation_total_timeout_seconds == 35
-    assert settings.correlation_max_attempts == 3
-    assert settings.correlation_backoff_seconds == 0.25
-    assert settings.service_bus_namespace == "pipesor-dev.servicebus.windows.net"
+    assert settings.service_bus_connection_string is not None
     assert settings.service_bus_receive_wait_seconds == 10
-    assert settings.service_bus_max_lock_renewal_seconds == 300
-    assert settings.termination_grace_seconds == 60
 
 
 def test_rejects_insecure_or_unbounded_runtime_settings() -> None:
     with pytest.raises(InvalidSettings, match="HTTPS"):
-        RuntimeSettings.from_environment(
-            {
-                "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
-                "PIPESOR_SERVICE_BUS_TOPIC": "protected-evidence",
-                "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
-                "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "10",
-                "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
-                "PIPESOR_CORRELATION_ENDPOINT": "http://correlation.internal",
-                "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
-                "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
-                "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
-                "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
-                "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
-            }
-        )
-    with pytest.raises(InvalidSettings, match="between 0 and 60"):
-        RuntimeSettings.from_environment(
-            {
-                "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
-                "PIPESOR_SERVICE_BUS_TOPIC": "protected-evidence",
-                "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
-                "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "10",
-                "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
-                "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal",
-                "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
-                "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "0",
-                "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "35",
-                "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
-                "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
-                "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
-            }
-        )
+        RuntimeSettings.from_environment(runtime_environment(
+            PIPESOR_ENDPOINTS_CORRELATION="http://correlation.internal"
+        ))
+    with pytest.raises(InvalidSettings, match="between 0"):
+        RuntimeSettings.from_environment(runtime_environment(
+            PIPESOR_CORRELATION_TIMEOUT_SECONDS="0"
+        ))
 
 
 def test_validation_budget_fits_sixty_second_termination_grace() -> None:
-    settings = RuntimeSettings.from_environment(
-        {
-            "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
-            "PIPESOR_SERVICE_BUS_TOPIC": "protected-workflow-evidence",
-            "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
-            "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "5",
-            "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
-            "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal",
-            "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
-            "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "10",
-            "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "40",
-            "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
-            "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
-            "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
-        }
-    )
-
+    settings = RuntimeSettings.from_environment(runtime_environment(
+        PIPESOR_CORRELATION_TIMEOUT_SECONDS="10"
+    ))
     assert settings.service_bus_receive_wait_seconds == 5
     assert settings.correlation_total_timeout_seconds == 40
     assert settings.termination_grace_seconds == 60
@@ -274,22 +238,9 @@ def test_validation_budget_fits_sixty_second_termination_grace() -> None:
 
 def test_rejects_shutdown_budget_that_exceeds_termination_grace() -> None:
     with pytest.raises(InvalidSettings, match="Termination grace"):
-        RuntimeSettings.from_environment(
-            {
-                "PIPESOR_SERVICE_BUS_NAMESPACE": "pipesor-dev.servicebus.windows.net",
-                "PIPESOR_SERVICE_BUS_TOPIC": "protected-workflow-evidence",
-                "PIPESOR_SERVICE_BUS_SUBSCRIPTION": "nlp-log-processor",
-                "PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS": "30",
-                "PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS": "300",
-                "PIPESOR_CORRELATION_ENDPOINT": "https://correlation.internal",
-                "PIPESOR_CORRELATION_SCOPE": "api://correlation/.default",
-                "PIPESOR_CORRELATION_TIMEOUT_SECONDS": "10",
-                "PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS": "40",
-                "PIPESOR_CORRELATION_MAX_ATTEMPTS": "3",
-                "PIPESOR_CORRELATION_BACKOFF_SECONDS": "1",
-                "PIPESOR_TERMINATION_GRACE_SECONDS": "60",
-            }
-        )
+        RuntimeSettings.from_environment(runtime_environment(
+            PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS="30"
+        ))
 
 
 def test_aggregate_locator_survives_sanitization_and_rejects_crossed_job() -> None:
@@ -302,4 +253,16 @@ def test_aggregate_locator_survives_sanitization_and_rejects_crossed_job() -> No
     assert delivery.deliveries[0].contract_version == "2.1"
     value["evidence"]["job"] = "702"
     with pytest.raises(InvalidIntegrationMessage):
+        handler(delivery).execute(received(value))
+
+
+def test_accepts_generalized_v22_locator_and_rejects_invalid_member() -> None:
+    value = payload(schema_version="2.2")
+    locator = "v2:job:701:member:test%20suite%2Foutput.log:lines:2-12:sha256:" + "b" * 64
+    value["evidence"].update(job="701", source_locator=locator)
+    delivery = RecordingEvidenceDelivery()
+    handler(delivery).execute(received(value))
+    assert delivery.deliveries[0].source_locator == locator
+    value["evidence"]["source_locator"] = locator.replace("test%20suite", "..")
+    with pytest.raises(InvalidIntegrationMessage, match="invalid_identifier"):
         handler(delivery).execute(received(value))

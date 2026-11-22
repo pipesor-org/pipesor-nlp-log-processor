@@ -4,7 +4,11 @@ NLP Log Processor preprocesses protected logs, structures them with Drain3, prep
 
 The processing worker is implemented as a Python package. It validates the locally approved Ingestion evidence v2 envelope and broker identifiers, redacts common credential shapes before parsing, structures sanitized logs with an in-memory Drain3 adapter and maps the result to the Correlation v2 candidate. Typed ports keep Azure Service Bus and HTTP SDKs outside the domain. The message loop completes only after a confirmed handoff, abandons transient or unexpected failures, dead-letters safe permanent contract failures and supports cooperative shutdown between receives. The repository includes live Service Bus and Correlation adapters but no deployed resources, approved production identifiers, Azure OpenAI call or inbound business HTTP API.
 
-The Correlation HTTP adapter serializes only sanitized v2 fields, preserves capture, pipeline, execution, commit and logical-reference context, uses an interchangeable bearer-token provider, enforces HTTPS, and applies deployment-configured timeouts and bounded retries. The Service Bus adapter uses Entra credentials, peek-lock reception, `eventType`/`schemaMajor` routing properties, explicit settlement and validated W3C trace propagation; namespace, topic, subscription and receive wait are required deployment inputs. The concrete Correlation audience/application role, broker entities and runtime role assignments remain pending IaC decisions. The Azure OpenAI embedding model, dimension, endpoint/SDK and grants remain pending decisions. Parser-state persistence and concrete broker re-delivery configuration are also intentionally not selected by this increment.
+The Correlation adapter sends exact platform workload JWTs, permits local loopback
+HTTP only in `local`, and otherwise requires HTTPS. Service Bus uses the emulator
+connection string locally and namespace plus `DefaultAzureCredential` in Azure.
+Protected evidence 2.0, 2.1 and generalized 2.2 locators are accepted. Drain3 state
+remains process-local, so the Container App must run exactly one replica.
 
 ## Documentation
 
@@ -43,11 +47,15 @@ After supplying the reviewed runtime variables, start the worker with:
 .\.venv\Scripts\pipesor-nlp-log-processor.exe
 ```
 
-Required variables are `PIPESOR_SERVICE_BUS_NAMESPACE`,
-`PIPESOR_SERVICE_BUS_TOPIC`, `PIPESOR_SERVICE_BUS_SUBSCRIPTION`,
+Required variables are `PIPESOR_ENVIRONMENT`, `PIPESOR_TENANT_ID`,
+`PIPESOR_WORKLOAD_ID=nlp`, `SERVER_ADDRESS`, `SERVER_PORT`,
+`PIPESOR_SERVICE_BUS_CONNECTION_STRING` (local) or
+`PIPESOR_SERVICE_BUS_NAMESPACE` (Azure),
+`PIPESOR_SERVICE_BUS_TOPIC=workflow-evidence`, `PIPESOR_SERVICE_BUS_SUBSCRIPTION=nlp`,
 `PIPESOR_SERVICE_BUS_RECEIVE_WAIT_SECONDS`,
 `PIPESOR_SERVICE_BUS_MAX_LOCK_RENEWAL_SECONDS`,
-`PIPESOR_CORRELATION_ENDPOINT`, `PIPESOR_CORRELATION_SCOPE`,
+`PIPESOR_ENDPOINTS_CORRELATION`, and `PIPESOR_SIGNING_KEY_FILE` (local) or
+`PIPESOR_SIGNING_KEY_ID` (Azure), plus
 `PIPESOR_CORRELATION_TIMEOUT_SECONDS`,
 `PIPESOR_CORRELATION_TOTAL_TIMEOUT_SECONDS`,
 `PIPESOR_CORRELATION_MAX_ATTEMPTS` and
@@ -56,7 +64,10 @@ Required variables are `PIPESOR_SERVICE_BUS_NAMESPACE`,
 defaults to `INFO`. Values remain reviewed deployment inputs; this repository
 does not provide production identifiers or credentials.
 
-The worker validates all settings before creating clients, consumes Service Bus, delivers sanitized evidence to Correlation and handles `SIGINT`/`SIGTERM` between receives. It does not expose a public or inbound business HTTP endpoint.
+The worker validates all settings before creating clients, consumes Service Bus,
+delivers sanitized evidence to Correlation and handles `SIGINT`/`SIGTERM` between
+receives. Its internal HTTP server exposes `/health/live`, `/health/ready`, and
+`/.well-known/jwks.json`; it has no inbound business endpoint.
 
 Structured stdout telemetry distinguishes accepted and duplicate completion,
 abandonment, dead-letter and authorization pause outcomes. Processing-duration and
@@ -85,10 +96,10 @@ identifiers and run:
 docker run --rm --env-file .env.local pipesor-nlp-log-processor:local
 ```
 
-Do not place tokens or connection strings in that file. Authentication uses the
-Azure credential chain; the Container App target uses its managed identity. No
-container health check or port is declared because the worker has no inbound API
-and its liveness/readiness probe contract remains pending.
+Do not commit tokens, connection strings or signing keys. Correlation discovers the
+public signing key through JWKS. Readiness fails while the Service Bus receiver is
+down or after Correlation returns 401/403. Configure ACA HTTP probes on port 8080;
+do not expose public ingress.
 
 CI runs the same Python checks and validates PR titles, required PR-description sections and commit headers against the organization Conventional Commit policy. Human review is still required for English imperative summaries, reported verification and behavioral correctness.
 
