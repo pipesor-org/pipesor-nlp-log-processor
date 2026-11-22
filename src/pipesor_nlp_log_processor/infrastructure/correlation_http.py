@@ -2,6 +2,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 from http.client import HTTPException
 from typing import Callable, Mapping, Protocol
@@ -170,9 +171,16 @@ class CorrelationHttpDelivery:
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
         observer: DeliveryAttemptObserver | None = None,
+        allow_loopback_http: bool = False,
     ) -> None:
-        if not base_endpoint.startswith("https://"):
-            raise ValueError("base_endpoint must use HTTPS")
+        parsed = urlsplit(base_endpoint)
+        loopback = parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        if parsed.scheme != "https" and not (
+            parsed.scheme == "http" and allow_loopback_http and loopback
+        ):
+            raise ValueError("HTTPS is required except for local loopback endpoints")
+        if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("base_endpoint must be an absolute endpoint without credentials")
         self._url = f"{base_endpoint.rstrip('/')}/internal/v1/processed-evidence"
         self._timeout_seconds = timeout_seconds
         self._retry_policy = retry_policy
@@ -317,7 +325,7 @@ class CorrelationHttpDelivery:
             raise AuthorizationDeliveryError("correlation_unauthenticated")
         if response.status_code == 403:
             raise AuthorizationDeliveryError("correlation_unauthorized")
-        if 400 <= response.status_code < 500:
+        if response.status_code in (400, 409, 413, 422):
             raise PermanentDeliveryError(_rejection_reason(response))
         raise TransientDeliveryError("invalid_correlation_response")
 

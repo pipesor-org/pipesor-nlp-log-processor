@@ -28,4 +28,5 @@ RUN python -m pip install --no-index --find-links=/wheels pipesor-nlp-log-proces
     && rm -rf /wheels
 
 USER 10001:10001
+EXPOSE 8080
 ENTRYPOINT ["pipesor-nlp-log-processor"]

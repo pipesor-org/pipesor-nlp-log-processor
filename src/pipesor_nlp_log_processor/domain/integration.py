@@ -1,6 +1,7 @@
 import json
 import re
 import uuid
+from urllib.parse import unquote_to_bytes
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -23,6 +24,11 @@ STAGES = frozenset(
 _SAFE_CONTEXT = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 _EXTERNAL_ID = re.compile(r"[1-9][0-9]*")
 _COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
+_LOCATOR = re.compile(
+    r"^v2:job:([1-9][0-9]{0,19}):member:"
+    r"((?:[A-Za-z0-9._~-]|%[0-9A-F]{2}){1,765}):lines:"
+    r"([1-9][0-9]{0,8})-([1-9][0-9]{0,8}):sha256:[0-9a-f]{64}$"
+)
 
 
 class InvalidIntegrationMessage(ValueError):
@@ -125,6 +131,47 @@ def _logical_id(name: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, name))
 
 
+def _source_locator(value: object, job: str | None) -> str:
+    if not isinstance(value, str) or job is None:
+        raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",))
+    match = _LOCATOR.fullmatch(value)
+    if match is None or match.group(1) != job:
+        raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",))
+    try:
+        member_bytes = unquote_to_bytes(match.group(2))
+        member = member_bytes.decode("utf-8")
+    except (UnicodeDecodeError, ValueError) as error:
+        raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",)) from error
+    parts = member.split("/")
+    first, last = int(match.group(3)), int(match.group(4))
+    if (
+        not 1 <= len(member_bytes) <= 255
+        or member.startswith("/")
+        or "\\" in member
+        or len(parts) > 2
+        or ".." in parts
+        or any(ord(character) < 32 or ord(character) == 127 for character in member)
+        or first > last
+        or last - first > 199
+    ):
+        raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",))
+    return value
+
+
+def _source_locator_v21(value: object, job: str | None) -> str:
+    if (
+        not isinstance(value, str)
+        or not job
+        or not _EXTERNAL_ID.fullmatch(job)
+        or not re.fullmatch(
+            rf"v2:job:{job}:member:[0-9]{{1,9}}_verify\.txt:lines:([1-9][0-9]{{0,8}})-\1:sha256:[0-9a-f]{{64}}",
+            value,
+        )
+    ):
+        raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",))
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class CaptureContext:
     tenant_id: str
@@ -212,7 +259,7 @@ class ProtectedEvidenceMessage:
 
         root = _object(payload, "$")
         schema_version = _text(root, "schema_version")
-        if schema_version not in {SCHEMA_VERSION, "2.1"}:
+        if schema_version not in {SCHEMA_VERSION, "2.1", "2.2"}:
             raise InvalidIntegrationMessage(
                 "unsupported_schema_version", ("schema_version",)
             )
@@ -241,9 +288,9 @@ class ProtectedEvidenceMessage:
         locator = evidence.get("source_locator")
         job = _optional_text(evidence, "job", "evidence.job")
         if schema_version == "2.1":
-            if (not isinstance(locator, str) or not job or not _EXTERNAL_ID.fullmatch(job)
-                    or not re.fullmatch(rf"v2:job:{job}:member:[0-9]{{1,9}}_verify\.txt:lines:([1-9][0-9]{{0,8}})-\1:sha256:[0-9a-f]{{64}}", locator)):
-                raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",))
+            locator = _source_locator_v21(locator, job)
+        elif schema_version == "2.2":
+            locator = _source_locator(locator, job)
         elif "source_locator" in evidence:
             raise InvalidIntegrationMessage("invalid_identifier", ("evidence.source_locator",))
 
