@@ -24,7 +24,9 @@ RUN apt-get update \
     && useradd --uid 10001 --gid pipesor --no-create-home --shell /usr/sbin/nologin pipesor
 
 COPY --from=builder /wheels /wheels
+# pip is not used at runtime; removing it avoids shipping its vendored build dependencies.
 RUN python -m pip install --no-index --find-links=/wheels pipesor-nlp-log-processor==0.1.0 \
+    && python -m pip uninstall --yes pip \
     && rm -rf /wheels
 
 USER 10001:10001

@@ -101,7 +101,23 @@ public signing key through JWKS. Readiness fails while the Service Bus receiver 
 down or after Correlation returns 401/403. Configure ACA HTTP probes on port 8080;
 do not expose public ingress.
 
-CI runs the same Python checks and validates PR titles, required PR-description sections and commit headers against the organization Conventional Commit policy. Human review is still required for English imperative summaries, reported verification and behavioral correctness.
+## CI/CD
+
+[CI](.github/workflows/ci.yml) calls the shared [`service-ci.yml`](https://github.com/pipesor-org/pipesor-ci#catalog)
+from [pipesor-ci](https://github.com/pipesor-org/pipesor-ci), pinned by commit SHA (Dependabot proposes updates). It
+checks the organization conventions (canonical commitlint/Lefthook, PR title of at most 65 characters and description,
+Conventional Commits, actionlint and zizmor), runs the Python checks above, builds the image once and runs
+[`tools/check_image.py`](tools/check_image.py) (UID/GID `10001`, safe configuration failure with exit code `2`,
+graceful `SIGTERM`). Trivy then records the SBOM and vulnerability report and blocks fixable HIGH/CRITICAL findings
+([image assurance](docs/image-assurance.md)). Only pushes to `main` publish the exact tested archive to the private
+GHCR package as `ghcr.io/pipesor-org/pipesor-nlp-log-processor:sha-<commit>-<run>-<attempt>` and record
+`candidate.json` with the digest. Install the commit hook locally with `bun install --frozen-lockfile && bun run
+setup:hooks`.
+
+This repository does not deploy: the environment's Terraform root in
+[pipesor-iac](https://github.com/pipesor-org/pipesor-iac/blob/main/docs/dev-runtime-deployment.md) pins the image by
+digest. [Release candidate](.github/workflows/release.yml) is hard-disabled and only names an existing digest. Human
+review is still required for English imperative summaries, reported verification and behavioral correctness.
 
 For the current documentation foundation, check affected links and consistency with the referenced sources, then run:
 

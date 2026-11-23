@@ -1,35 +1,28 @@
 # Image assurance
 
-The quality workflow builds the worker image without BuildKit provenance and
-records its local content digest. It does not publish the image or modify Azure.
+CI uses the shared [pipesor-ci](https://github.com/pipesor-org/pipesor-ci) pipeline. Every pull request and every
+push to `main` builds the worker image once (without BuildKit provenance, labelled with the source revision) and
+checks it before anything is published:
 
-The runtime is checked in two independent scopes:
+- [`tools/check_image.py`](../tools/check_image.py) verifies UID/GID `10001`, the safe failure before Azure client
+  creation (exit code `2` with a `configuration_invalid` event) and delivery of `SIGTERM` to the application's
+  shutdown handler within the approved 60-second grace period.
+- Trivy `0.76.2`, pinned by image digest, scans the exact image archive (operating-system and Python packages in
+  the final filesystem). It records a CycloneDX SBOM and a complete JSON vulnerability report as the 90-day
+  `image-assurance-<run>-<attempt>` artifact and blocks `HIGH` or `CRITICAL` vulnerabilities that have a fixed
+  version. Reviewed exceptions belong in a root `.trivyignore.yaml` with their justification.
 
-- Trivy `0.76.2`, pinned by image digest, generates an operating-system SBOM and
-  blocks fixed `HIGH` or `CRITICAL` operating-system vulnerabilities.
-- `pip-audit 2.10.1` generates a Python CycloneDX SBOM from the packages actually
-  installed in the runtime image and blocks known Python dependency
-  vulnerabilities.
+The runtime image removes `pip` after installing the wheel: pip is unused at runtime and its vendored
+libraries (certifi, urllib3, msgpack, setuptools) were reported by the complete image scan.
 
-The split is intentional. The digest-pinned upstream Python image includes an
-OCI SBOM for its build environment. Scanning that attestation as if it described
-the final runtime reports packages which are absent or upgraded in the final
-filesystem. The workflow retains separate OS and Python evidence rather than
-suppressing individual vulnerability identifiers.
+Scanning the saved archive covers the final filesystem only; it does not read the upstream base image's build-time
+SBOM attestation, which previously reported packages absent from the runtime image.
 
-Every quality run uploads the image digest, both CycloneDX SBOMs and both
-vulnerability reports as a 14-day workflow artifact. The workflow also verifies
-the non-root identity, safe failure before Azure client creation and delivery of
-`SIGTERM` to the application's shutdown handler with the approved 60-second
-grace period.
+After the checks succeed on a `main` push, the shared publisher loads that exact archive, verifies its checksum and
+revision label, keeps the GHCR package private and pushes it once as
+`ghcr.io/pipesor-org/pipesor-nlp-log-processor:sha-<full-commit>-<run>-<attempt>`. It records `candidate.json`
+(source SHA, image, digest, CI run/attempt) for 90 days. It does not publish `latest` or rebuild the image. Releases
+and environments use that digest.
 
-Private GHCR publication is authorized. After the quality job succeeds on a
-`main` push, a separate least-privilege job downloads that exact validated image
-and publishes it once as
-`ghcr.io/pipesor-org/pipesor-nlp-log-processor:sha-<full-commit>`. The job records
-the registry digest and fails unless the package API reports private visibility.
-It does not publish `latest` or rebuild the image. Release tags must promote this
-digest rather than rebuilding it.
-
-Azure deployment, registry pull authorization and RBAC remain separate delivery
-changes and are not authorized by image publication.
+Azure deployment is owned by the IaC Terraform root, which pins the image by digest; registry pull authorization and
+RBAC remain IaC changes.
