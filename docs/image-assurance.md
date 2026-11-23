@@ -12,6 +12,9 @@ checks it before anything is published:
   `image-assurance-<run>-<attempt>` artifact and blocks `HIGH` or `CRITICAL` vulnerabilities that have a fixed
   version. Reviewed exceptions belong in a root `.trivyignore.yaml` with their justification.
 
+The runtime image removes `pip` after installing the wheel: pip is unused at runtime and its vendored
+libraries (certifi, urllib3, msgpack, setuptools) were reported by the complete image scan.
+
 Scanning the saved archive covers the final filesystem only; it does not read the upstream base image's build-time
 SBOM attestation, which previously reported packages absent from the runtime image.
 
