@@ -23,7 +23,6 @@ pipesor-nlp-log-processor = "pipesor_nlp_log_processor.main:main"
 [project.optional-dependencies]
 dev = [
   "httpx==0.28.1",
-  "pip-audit==2.10.1",
   "pytest==9.2.0",
 ]
 
