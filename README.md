@@ -119,6 +119,8 @@ This repository does not deploy: the environment's Terraform root in
 digest. [Release candidate](.github/workflows/release.yml) is hard-disabled and only names an existing digest. Human
 review is still required for English imperative summaries, reported verification and behavioral correctness.
 
+**Registry retention.** [Registry retention](.github/workflows/registry-retention.yml) runs weekly through the shared [pipesor-ci workflow](https://github.com/pipesor-org/pipesor-ci#registry-retention): it keeps every deployed or recently deployed digest (pipesor-iac `images.json` history), release digests, the newest and recent candidates and the children of kept image indexes, and reports the rest. It is a dry run until the repository variable `REGISTRY_RETENTION_DELETE` is `true`.
+
 For the current documentation foundation, check affected links and consistency with the referenced sources, then run:
 
 ```bash
